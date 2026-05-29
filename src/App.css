@@ -635,12 +635,6 @@ select:focus {
   font-size: 24px;
 }
 
-.password-change-form {
-  margin-top: 22px;
-  padding-top: 22px;
-  border-top: 1px solid #e6ece9;
-}
-
 .compact-title {
   gap: 8px;
 }
@@ -1403,6 +1397,10 @@ select:focus {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 24px 70px rgb(23 33 31 / 22%);
+}
+
+.password-change-modal {
+  width: min(520px, 100%);
 }
 
 .modal-header {

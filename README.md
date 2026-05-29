@@ -1,51 +1,105 @@
-# 근무 급여 계산기
+# WorkSalaryCalculator
 
-회사 근무, 퇴근 후 재택전환, 이동시간 제외, 휴게시간 제외를 반영하는 가벼운 급여 계산기입니다.
+한국 기준 근무시간, 이동시간, 휴게시간, 연장/야간/휴일근로, 월별 예상 임금, 근무일지 엑셀 다운로드를 처리하는 Vite 기반 급여 계산기입니다.
 
-## Supabase 설정
+## 아키텍처
+
+- Frontend: `React`, `TypeScript`, `Vite`
+- Backend: `Supabase Auth`, `Postgres`, `Storage`, `Edge Functions`
+- 배포: `GitHub` main 브랜치 → `Vercel` 자동 배포
+- 인증: Supabase Email Auth
+- 데이터 권한: Supabase RLS 정책으로 본인 데이터와 관리자 권한 분리
+- 엑셀 템플릿: GitHub/Vercel에 포함하지 않고 Supabase Storage 비공개 버킷에서 런타임 다운로드
+
+## 주요 화면
+
+- 근무입력: 근무일, 휴일근무, 휴가, 근무시간, 이동시간, 연장근무 사유를 입력하고 일급을 계산합니다.
+- 워킹캘린더: 월별 근무 현황과 총급여를 캘린더로 확인하고 본인 근무일지를 엑셀로 다운로드합니다.
+- 마이페이지: 직급, 입사일자, 조직, 연봉, 부양가족수, 자녀 수를 관리합니다. 비밀번호 변경은 모달에서 처리합니다.
+- 사용자관리: 관리자가 사용자 목록을 검색/수정하고 대상자를 선택해 월별 근무일지를 다운로드합니다.
+- 조직관리: 본부, 팀, 파트와 조직장을 관리하고 조직도를 확인합니다.
+- 시스템관리: 기본근무시간, 휴게시간, 주휴일, 토요일 처리, 포괄근로시간, 세율, 월별 휴일을 관리합니다.
+
+## Supabase 구성
 
 1. Supabase 대시보드에서 프로젝트를 엽니다.
-2. 왼쪽 메뉴에서 `SQL Editor`를 누릅니다.
-3. `New query`를 누릅니다.
-4. 이 프로젝트의 `supabase/schema.sql` 내용을 전부 복사해서 붙여넣습니다.
-5. `Run`을 누릅니다.
-6. 왼쪽 메뉴 `Storage` → `worklog-templates` 버킷을 열고 `stl-monthly-worklog-template.xlsx` 파일을 업로드합니다. 이 버킷은 public으로 열지 않습니다.
-7. 왼쪽 메뉴 `Authentication` → `Providers` → `Email`이 켜져 있는지 확인합니다.
-8. `Authentication` → `Sign In / Providers`에서 `Confirm email`이 켜져 있으면 회원가입 후 인증 메일을 확인해야 로그인됩니다.
-9. `Authentication` → `URL Configuration`에서 `Site URL`을 로컬 개발 중에는 `http://127.0.0.1:5173`으로 설정합니다.
-10. 같은 화면의 `Redirect URLs`에 `http://127.0.0.1:5173`을 추가합니다.
+2. `SQL Editor` → `New query`를 엽니다.
+3. `supabase/schema.sql` 내용을 실행합니다.
+4. `Storage`의 `worklog-templates` 버킷에 `stl-monthly-worklog-template.xlsx` 파일을 업로드합니다.
+5. `worklog-templates` 버킷은 public으로 열지 않습니다.
+6. `Authentication` → `Providers`에서 Email 로그인을 활성화합니다.
+7. `Authentication` → `URL Configuration`에 로컬/배포 URL을 등록합니다.
 
-회원가입 화면에서는 이메일, 비밀번호, 이름을 입력합니다. Supabase가 인증 메일을 보내고, 사용자가 메일 확인 링크를 누른 뒤 로그인할 수 있습니다.
-비밀번호 찾기는 Supabase 재설정 메일을 사용합니다. 사용자가 메일 링크를 누르면 앱에서 새 비밀번호를 설정합니다.
-마이페이지에서는 통상시급, 기본근무시간, 기본 휴게시간을 저장합니다. 저장된 통상시급은 근무 입력 화면에 노출하지 않고 계산에만 사용하며, 기본근무시간은 연장근로 계산 기준에 반영됩니다.
+로컬 개발 URL 예시:
 
-## 로컬 환경변수
+```text
+http://127.0.0.1:5173
+http://localhost:5173
+```
 
-`.env.local`을 직접 만들고 Supabase 프로젝트 URL과 anon public key를 넣습니다. 이 파일은 GitHub에 올리지 않습니다.
+Vercel 배포 후에는 배포 URL도 추가합니다.
+
+```text
+https://your-project.vercel.app
+https://your-project.vercel.app/**
+```
+
+## 환경변수
+
+로컬에서는 `.env.local`을 직접 만들고 GitHub에 올리지 않습니다.
 
 ```env
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-public-key
 ```
 
-근태 다운로드용 엑셀 템플릿은 GitHub와 Vercel에 포함하지 않습니다. Supabase Storage의 비공개 `worklog-templates` 버킷에 올린 파일을 관리자만 런타임에 다운로드해서 사용합니다.
+Vercel에도 동일한 키를 등록합니다.
 
-## 실행
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+`service_role` 키는 프론트엔드나 Vercel 환경변수에 넣지 않습니다. 관리자 계정 생성 Edge Function에 필요한 관리자 키는 Supabase Function Secret에만 저장합니다.
+
+## 로컬 실행
 
 ```bash
 pnpm install
 pnpm run dev
 ```
 
-브라우저에서 Vite가 보여주는 로컬 주소를 엽니다.
+검증:
 
-## 현재 계산 기준
+```bash
+pnpm run lint
+pnpm run build
+```
 
-- 출근시간부터 총 근무 종료시간까지를 전체 시간으로 봅니다.
-- 사용자가 입력한 이동시간은 급여 계산에서 제외합니다.
-- 마이페이지에 저장한 기본 휴게시간은 급여 계산에서 제외합니다.
-- 휴일 근무는 주휴일, 공휴일·대체공휴일, 근로자의 날, 회사 취업규칙이나 근로계약상 휴일에 근무한 경우 체크합니다.
-- 1일 8시간 초과분은 연장근로로 계산합니다.
-- 22:00부터 06:00까지는 야간근로 가산분으로 계산합니다.
-- 휴일 근무는 8시간 이내 1.5배, 8시간 초과 2.0배로 계산합니다.
-- 세금, 4대보험, 주휴수당, 사업장별 취업규칙은 아직 포함하지 않습니다.
+## 배포
+
+GitHub main 브랜치에 push하면 Vercel이 자동 배포합니다.
+
+```bash
+pnpm run lint
+pnpm run build
+git add .
+git commit -m "feat: 작업내용"
+git push
+```
+
+DB 스키마가 바뀌면 `supabase/schema.sql`도 수정하고 Supabase SQL Editor에서 실행해야 합니다.
+
+## 계산 기준
+
+- 근무 시작부터 근무 종료까지를 총 근무시간으로 계산합니다.
+- 종료시간이 시작시간보다 빠르면 다음날 퇴근으로 보고 24시간 초과 표기를 지원합니다.
+- 이동시간은 급여 산정에서 차감합니다.
+- 휴게시간은 설정값과 근무시간 기준 자동 휴게 계산에 따라 차감합니다.
+- 기본근로, 연장근로, 야간근로, 휴일근로, 휴일연장근로를 분리합니다.
+- 휴가와 평일 유급휴일은 설정된 기본근무시간 기준으로 월별 산정에 반영합니다.
+- 월별 예상 임금은 기본급, 고정 포괄수당, 추가 수당, 4대보험, 소득세/지방소득세 추정치를 함께 표시합니다.
+
+## 보안 주의
+
+- `.env.local`, `dist`, `node_modules`, Supabase 임시 파일, 엑셀 템플릿은 커밋하지 않습니다.
+- 엑셀 템플릿은 `public/templates`에 두지 않고 Supabase Storage 비공개 버킷에 둡니다.
+- anon key는 프론트에서 사용할 수 있지만 service role key는 절대 브라우저에 노출하지 않습니다.
