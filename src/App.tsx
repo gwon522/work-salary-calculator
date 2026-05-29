@@ -1147,6 +1147,11 @@ function App() {
   const [authMessage, setAuthMessage] = useState('')
   const [form, setForm] = useState(initialForm)
   const [settingsForm, setSettingsForm] = useState(initialSettingsForm)
+  const [profilePasswordForm, setProfilePasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  })
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [adminCreateUserForm, setAdminCreateUserForm] =
@@ -1168,6 +1173,7 @@ function App() {
   const [saveMessage, setSaveMessage] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [settingsMessage, setSettingsMessage] = useState('')
+  const [profilePasswordMessage, setProfilePasswordMessage] = useState('')
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false)
   const [isAdminCreateUserModalOpen, setIsAdminCreateUserModalOpen] =
@@ -2355,6 +2361,63 @@ function App() {
     window.location.reload()
   }
 
+  async function handleChangeProfilePassword(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+    setProfilePasswordMessage('')
+
+    const currentPassword = profilePasswordForm.currentPassword.trim()
+    const nextPassword = profilePasswordForm.newPassword
+    const nextPasswordConfirm = profilePasswordForm.confirmPassword
+
+    if (!session?.user.email) {
+      setProfilePasswordMessage('로그인이 필요합니다.')
+      return
+    }
+
+    if (!currentPassword || !nextPassword || !nextPasswordConfirm) {
+      setProfilePasswordMessage('현재 비밀번호와 새 비밀번호를 입력해주세요.')
+      return
+    }
+
+    if (nextPassword.length < 6) {
+      setProfilePasswordMessage('새 비밀번호는 6자 이상 입력해주세요.')
+      return
+    }
+
+    if (nextPassword !== nextPasswordConfirm) {
+      setProfilePasswordMessage('새 비밀번호가 서로 다릅니다.')
+      return
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: session.user.email,
+      password: currentPassword,
+    })
+
+    if (signInError) {
+      setProfilePasswordMessage('현재 비밀번호가 올바르지 않습니다.')
+      return
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: nextPassword,
+    })
+
+    if (error) {
+      setProfilePasswordMessage(error.message)
+      return
+    }
+
+    setProfilePasswordForm({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    })
+    setProfilePasswordMessage('비밀번호가 변경되었습니다.')
+  }
+
   async function handleSaveSystemSettings(
     event: React.FormEvent<HTMLFormElement>,
   ) {
@@ -3391,6 +3454,66 @@ function App() {
               </button>
             </div>
             {settingsMessage && <p className="message">{settingsMessage}</p>}
+          </form>
+          <form
+            className="settings-form password-change-form"
+            onSubmit={handleChangeProfilePassword}
+          >
+            <div className="section-title compact-title">
+              <KeyRound size={18} />
+              <h3>비밀번호 변경</h3>
+            </div>
+            <div className="form-grid settings-grid">
+              <label className="settings-half">
+                현재 비밀번호
+                <input
+                  type="password"
+                  value={profilePasswordForm.currentPassword}
+                  autoComplete="current-password"
+                  onChange={(event) =>
+                    setProfilePasswordForm({
+                      ...profilePasswordForm,
+                      currentPassword: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="settings-half">
+                새 비밀번호
+                <input
+                  type="password"
+                  value={profilePasswordForm.newPassword}
+                  autoComplete="new-password"
+                  onChange={(event) =>
+                    setProfilePasswordForm({
+                      ...profilePasswordForm,
+                      newPassword: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="settings-half">
+                새 비밀번호 확인
+                <input
+                  type="password"
+                  value={profilePasswordForm.confirmPassword}
+                  autoComplete="new-password"
+                  onChange={(event) =>
+                    setProfilePasswordForm({
+                      ...profilePasswordForm,
+                      confirmPassword: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <button type="submit" className="secondary-button settings-half">
+                <KeyRound size={18} />
+                비밀번호 변경
+              </button>
+            </div>
+            {profilePasswordMessage && (
+              <p className="message">{profilePasswordMessage}</p>
+            )}
           </form>
         </section>
       ) : activePage === 'users' && isAdmin ? (
