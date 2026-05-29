@@ -1174,6 +1174,7 @@ function App() {
   const [toastMessage, setToastMessage] = useState('')
   const [settingsMessage, setSettingsMessage] = useState('')
   const [profilePasswordMessage, setProfilePasswordMessage] = useState('')
+  const [calendarMessage, setCalendarMessage] = useState('')
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false)
   const [isAdminCreateUserModalOpen, setIsAdminCreateUserModalOpen] =
@@ -2766,6 +2767,190 @@ function App() {
     })
   }
 
+  async function downloadWorkLogWorkbook(
+    selectedUsers: Profile[],
+    workLogs: WorkLog[],
+    year: string,
+    month: string,
+    fileName: string,
+  ) {
+    if (selectedUsers.length > 20) {
+      throw new Error(
+        'STL 근태 기록 템플릿은 최대 20명까지만 다운로드할 수 있습니다.',
+      )
+    }
+
+    const logsByUser = new Map<string, WorkLog[]>()
+    workLogs.forEach((log) => {
+      logsByUser.set(log.user_id, [...(logsByUser.get(log.user_id) ?? []), log])
+    })
+
+    const templateBuffer = await loadWorkLogTemplateBuffer()
+    const zip = await JSZip.loadAsync(templateBuffer)
+    const workbookXmlFile = zip.file('xl/workbook.xml')
+    const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels')
+
+    if (!workbookXmlFile || !workbookRelsFile) {
+      throw new Error('근태 기록 템플릿 구조를 확인할 수 없습니다.')
+    }
+
+    const workbookDocument = parseSpreadsheetXml(
+      await workbookXmlFile.async('text'),
+    )
+    const workbookRelsDocument = parseSpreadsheetXml(
+      await workbookRelsFile.async('text'),
+    )
+    const sheetTargets = getWorkbookSheetTargets(
+      workbookDocument,
+      workbookRelsDocument,
+    )
+    const dashboardTarget = sheetTargets.get('DashBoard')
+    const dashboardDocument = dashboardTarget
+      ? parseSpreadsheetXml(
+          (await zip.file(dashboardTarget.path)?.async('text')) ?? '',
+        )
+      : null
+    const lastDay = Number(getMonthRange(year, month).end.slice(8, 10))
+    const regularEndMinutes = timeToMinutes(settingsForm.defaultRegularEnd)
+    const usedSheetNames = new Set(Array.from(sheetTargets.keys()))
+
+    for (let sheetIndex = 1; sheetIndex <= 20; sheetIndex += 1) {
+      const originalSheetName = String(sheetIndex)
+      const sheetTarget = sheetTargets.get(originalSheetName)
+
+      if (!sheetTarget) {
+        continue
+      }
+
+      const sheetXmlFile = zip.file(sheetTarget.path)
+      if (!sheetXmlFile) {
+        continue
+      }
+
+      const sheetDocument = parseSpreadsheetXml(await sheetXmlFile.async('text'))
+      const sheetData = sheetDocument.getElementsByTagNameNS(
+        spreadsheetNamespace,
+        'sheetData',
+      )[0]
+
+      if (!sheetData) {
+        continue
+      }
+
+      normalizeWeekdayFormula(sheetDocument)
+
+      const sheetContext = {
+        document: sheetDocument,
+        sheetData,
+      }
+      const user = selectedUsers[sheetIndex - 1]
+      const userLogs = user ? logsByUser.get(user.id) ?? [] : []
+      const logsByDate = new Map(userLogs.map((log) => [log.work_date, log]))
+
+      if (user) {
+        usedSheetNames.delete(originalSheetName)
+        const nextSheetName = getSafeSheetName(user.name, usedSheetNames)
+        sheetTarget.element.setAttribute('name', nextSheetName)
+        replaceSheetReference(dashboardDocument, originalSheetName, nextSheetName)
+      }
+
+      setXmlTimeCellValue(
+        sheetContext,
+        'B3',
+        timeToMinutes(settingsForm.defaultRegularStart),
+      )
+      setXmlTimeCellValue(
+        sheetContext,
+        'B5',
+        timeToMinutes(settingsForm.defaultRegularEnd),
+      )
+      setXmlCellValue(sheetContext, 'B7', user?.name ?? null)
+      setXmlCellValue(
+        sheetContext,
+        'B9',
+        user?.hire_date ? new Date(`${user.hire_date}T00:00:00`) : null,
+      )
+      setXmlCellValue(
+        sheetContext,
+        'F3',
+        new Date(`${year}-${month}-01T00:00:00`),
+      )
+
+      for (let day = 1; day <= 31; day += 1) {
+        const row = day + 2
+        const date = `${year}-${month}-${String(day).padStart(2, '0')}`
+
+        ;['G', 'H', 'I', 'J', 'K', 'L'].forEach((column) => {
+          setXmlCellValue(sheetContext, `${column}${row}`, null)
+        })
+
+        if (day > lastDay) {
+          continue
+        }
+
+        const log = logsByDate.get(date)
+
+        if (!log) {
+          continue
+        }
+
+        const scheduleLabel =
+          log.leave_type && log.leave_type !== 'none'
+            ? '휴가'
+            : log.is_holiday || isMonthlyHolidayDate(log.work_date, log)
+              ? getKoreanWeekday(log.work_date) === 0
+                ? '주휴일'
+                : '공휴일'
+              : getKoreanWeekday(log.work_date) === 6 &&
+                  settingsForm.saturdayPolicy === 'offday'
+                ? '휴무'
+                : ''
+
+        if (scheduleLabel) {
+          setXmlCellValue(sheetContext, `D${row}`, scheduleLabel)
+        }
+        setXmlCellValue(
+          sheetContext,
+          `G${row}`,
+          formatClockMinutes(
+            getWorkLogClockMinutes(log.work_date, log.office_clock_in),
+          ),
+        )
+        setXmlCellValue(
+          sheetContext,
+          `H${row}`,
+          formatClockMinutes(
+            getWorkLogClockMinutes(log.work_date, log.office_clock_out),
+          ),
+        )
+        const isAfterRegularEnd =
+          getWorkLogClockMinutes(log.work_date, log.office_clock_out) >
+          regularEndMinutes
+
+        setXmlCellValue(sheetContext, `I${row}`, 'X')
+        setXmlCellValue(sheetContext, `J${row}`, isAfterRegularEnd ? 'O' : null)
+        setXmlCellValue(sheetContext, `K${row}`, isAfterRegularEnd ? 'O' : null)
+        setXmlCellValue(sheetContext, `L${row}`, log.overtime_reason ?? null)
+      }
+
+      zip.file(sheetTarget.path, serializeSpreadsheetXml(sheetDocument))
+    }
+
+    zip.file('xl/workbook.xml', serializeSpreadsheetXml(workbookDocument))
+    if (dashboardTarget && dashboardDocument) {
+      zip.file(dashboardTarget.path, serializeSpreadsheetXml(dashboardDocument))
+    }
+
+    downloadWorkbookBlob(
+      await zip.generateAsync({
+        type: 'blob',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      fileName,
+    )
+  }
+
   async function handleDownloadWorkLogs() {
     setSettingsMessage('')
 
@@ -2801,188 +2986,11 @@ function App() {
         adminUsers.filter((user) => selectedWorkLogUserIds.includes(user.id)),
       )
 
-      if (selectedUsers.length > 20) {
-        setSettingsMessage(
-          'STL 근태 기록 템플릿은 최대 20명까지만 다운로드할 수 있습니다.',
-        )
-        return
-      }
-
-      const logsByUser = new Map<string, WorkLog[]>()
-      ;((data ?? []) as WorkLog[]).forEach((log) => {
-        logsByUser.set(log.user_id, [
-          ...(logsByUser.get(log.user_id) ?? []),
-          log,
-        ])
-      })
-
-      const templateBuffer = await loadWorkLogTemplateBuffer()
-      const zip = await JSZip.loadAsync(templateBuffer)
-      const workbookXmlFile = zip.file('xl/workbook.xml')
-      const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels')
-
-      if (!workbookXmlFile || !workbookRelsFile) {
-        setSettingsMessage('근태 기록 템플릿 구조를 확인할 수 없습니다.')
-        return
-      }
-
-      const workbookDocument = parseSpreadsheetXml(
-        await workbookXmlFile.async('text'),
-      )
-      const workbookRelsDocument = parseSpreadsheetXml(
-        await workbookRelsFile.async('text'),
-      )
-      const sheetTargets = getWorkbookSheetTargets(
-        workbookDocument,
-        workbookRelsDocument,
-      )
-      const dashboardTarget = sheetTargets.get('DashBoard')
-      const dashboardDocument = dashboardTarget
-        ? parseSpreadsheetXml(
-            (await zip.file(dashboardTarget.path)?.async('text')) ?? '',
-          )
-        : null
-      const lastDay = Number(
-        getMonthRange(workLogDownloadYear, workLogDownloadMonth).end.slice(8, 10),
-      )
-      const regularEndMinutes = timeToMinutes(settingsForm.defaultRegularEnd)
-      const usedSheetNames = new Set(
-        Array.from(sheetTargets.keys()),
-      )
-
-      for (let sheetIndex = 1; sheetIndex <= 20; sheetIndex += 1) {
-        const originalSheetName = String(sheetIndex)
-        const sheetTarget = sheetTargets.get(originalSheetName)
-
-        if (!sheetTarget) {
-          continue
-        }
-
-        const sheetXmlFile = zip.file(sheetTarget.path)
-        if (!sheetXmlFile) {
-          continue
-        }
-
-        const sheetDocument = parseSpreadsheetXml(await sheetXmlFile.async('text'))
-        const sheetData = sheetDocument.getElementsByTagNameNS(
-          spreadsheetNamespace,
-          'sheetData',
-        )[0]
-
-        if (!sheetData) {
-          continue
-        }
-
-        normalizeWeekdayFormula(sheetDocument)
-
-        const sheetContext = {
-          document: sheetDocument,
-          sheetData,
-        }
-        const user = selectedUsers[sheetIndex - 1]
-        const userLogs = user ? logsByUser.get(user.id) ?? [] : []
-        const logsByDate = new Map(userLogs.map((log) => [log.work_date, log]))
-
-        if (user) {
-          usedSheetNames.delete(originalSheetName)
-          const nextSheetName = getSafeSheetName(user.name, usedSheetNames)
-          sheetTarget.element.setAttribute('name', nextSheetName)
-          replaceSheetReference(dashboardDocument, originalSheetName, nextSheetName)
-        }
-
-        setXmlTimeCellValue(
-          sheetContext,
-          'B3',
-          timeToMinutes(settingsForm.defaultRegularStart),
-        )
-        setXmlTimeCellValue(
-          sheetContext,
-          'B5',
-          timeToMinutes(settingsForm.defaultRegularEnd),
-        )
-        setXmlCellValue(sheetContext, 'B7', user?.name ?? null)
-        setXmlCellValue(
-          sheetContext,
-          'B9',
-          user?.hire_date ? new Date(`${user.hire_date}T00:00:00`) : null,
-        )
-        setXmlCellValue(
-          sheetContext,
-          'F3',
-          new Date(`${workLogDownloadYear}-${workLogDownloadMonth}-01T00:00:00`),
-        )
-
-        for (let day = 1; day <= 31; day += 1) {
-          const row = day + 2
-          const date = `${workLogDownloadYear}-${workLogDownloadMonth}-${String(day).padStart(2, '0')}`
-
-          ;['G', 'H', 'I', 'J', 'K', 'L'].forEach((column) => {
-            setXmlCellValue(sheetContext, `${column}${row}`, null)
-          })
-
-          if (day > lastDay) {
-            continue
-          }
-
-          const log = logsByDate.get(date)
-
-          if (!log) {
-            continue
-          }
-
-          const scheduleLabel =
-            log.leave_type && log.leave_type !== 'none'
-              ? '휴가'
-              : log.is_holiday || isMonthlyHolidayDate(log.work_date, log)
-                ? getKoreanWeekday(log.work_date) === 0
-                  ? '주휴일'
-                  : '공휴일'
-                : getKoreanWeekday(log.work_date) === 6 &&
-                    settingsForm.saturdayPolicy === 'offday'
-                  ? '휴무'
-                  : ''
-
-          if (scheduleLabel) {
-            setXmlCellValue(sheetContext, `D${row}`, scheduleLabel)
-          }
-          setXmlCellValue(
-            sheetContext,
-            `G${row}`,
-            formatClockMinutes(
-              getWorkLogClockMinutes(log.work_date, log.office_clock_in),
-            ),
-          )
-          setXmlCellValue(
-            sheetContext,
-            `H${row}`,
-            formatClockMinutes(
-              getWorkLogClockMinutes(log.work_date, log.office_clock_out),
-            ),
-          )
-          const isAfterRegularEnd =
-            getWorkLogClockMinutes(log.work_date, log.office_clock_out) >
-            regularEndMinutes
-
-          setXmlCellValue(sheetContext, `I${row}`, 'X')
-          setXmlCellValue(sheetContext, `J${row}`, isAfterRegularEnd ? 'O' : null)
-          setXmlCellValue(sheetContext, `K${row}`, isAfterRegularEnd ? 'O' : null)
-          setXmlCellValue(sheetContext, `L${row}`, log.overtime_reason ?? null)
-        }
-
-        zip.file(sheetTarget.path, serializeSpreadsheetXml(sheetDocument))
-      }
-
-      zip.file('xl/workbook.xml', serializeSpreadsheetXml(workbookDocument))
-      if (dashboardTarget && dashboardDocument) {
-        zip.file(dashboardTarget.path, serializeSpreadsheetXml(dashboardDocument))
-      }
-
-      downloadWorkbookBlob(
-        await zip.generateAsync({
-          type: 'blob',
-          mimeType:
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        }),
+      await downloadWorkLogWorkbook(
+        selectedUsers,
+        (data ?? []) as WorkLog[],
+        workLogDownloadYear,
+        workLogDownloadMonth,
         `근무일지_${workLogDownloadYear}-${workLogDownloadMonth}.xlsx`,
       )
     } catch (downloadError) {
@@ -2992,6 +3000,32 @@ function App() {
           : '알 수 없는 오류'
       console.error(downloadError)
       setSettingsMessage(`근무일지 다운로드에 실패했습니다: ${message}`)
+    }
+  }
+
+  async function handleDownloadMyWorkLog() {
+    setCalendarMessage('')
+
+    if (!profile?.id) {
+      setCalendarMessage('로그인이 필요합니다.')
+      return
+    }
+
+    try {
+      await downloadWorkLogWorkbook(
+        [profile],
+        payrollLogs,
+        selectedYear,
+        selectedMonth,
+        `근무일지_${profile.name}_${selectedYear}-${selectedMonth}.xlsx`,
+      )
+    } catch (downloadError) {
+      const message =
+        downloadError instanceof Error
+          ? downloadError.message
+          : '알 수 없는 오류'
+      console.error(downloadError)
+      setCalendarMessage(`근무일지 다운로드에 실패했습니다: ${message}`)
     }
   }
 
@@ -5285,8 +5319,17 @@ function App() {
                   )
                 })}
               </select>
+              <button
+                type="button"
+                className="secondary-button compact-download-button"
+                onClick={handleDownloadMyWorkLog}
+              >
+                <Download size={16} />
+                엑셀 다운로드
+              </button>
             </div>
           </div>
+          {calendarMessage && <p className="message">{calendarMessage}</p>}
           <div className="calendar-total">
             <span>
               {Number(selectedYear)}년 {Number(selectedMonth)}월 총급여(세전)

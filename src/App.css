@@ -1649,6 +1649,12 @@ select:focus {
   gap: 8px;
 }
 
+.compact-download-button {
+  min-height: 42px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
 .calendar-total {
   min-height: 48px;
   display: flex;
