@@ -10,11 +10,13 @@ import {
   KeyRound,
   LogOut,
   Mail,
+  Pencil,
   Save,
   Settings,
   Trash2,
   Users,
   UserRound,
+  X,
 } from 'lucide-react'
 import JSZip from 'jszip'
 import './App.css'
@@ -587,6 +589,50 @@ function getLeaveLabel(leaveType: string | null | undefined) {
   return leaveOptions.find((option) => option.value === leaveType)?.label ?? '휴가'
 }
 
+function normalizeLeaveType(leaveType: string | null | undefined): LeaveType {
+  return leaveOptions.some((option) => option.value === leaveType)
+    ? (leaveType as LeaveType)
+    : 'none'
+}
+
+function dateTimeToTimeValue(value: string | null | undefined) {
+  if (!value) {
+    return '00:00'
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '00:00'
+  }
+
+  return `${String(date.getHours()).padStart(2, '0')}:${String(
+    date.getMinutes(),
+  ).padStart(2, '0')}`
+}
+
+function buildWorkFormFromLog(log: WorkLog): WorkForm {
+  const workStart = dateTimeToTimeValue(log.office_clock_in)
+  const workEnd = dateTimeToTimeValue(log.office_clock_out)
+  const hasCommute = log.commute_minutes > 0
+  const commuteEnd = hasCommute ? workEnd : initialForm.commuteEnd
+  const commuteStart = hasCommute
+    ? minutesToTime(timeToMinutes(commuteEnd) - log.commute_minutes)
+    : initialForm.commuteStart
+
+  return {
+    workDate: log.work_date,
+    workStart,
+    workEnd,
+    commuteStart,
+    commuteEnd,
+    noCommute: !hasCommute,
+    isHoliday: log.is_holiday,
+    leaveType: normalizeLeaveType(log.leave_type),
+    overtimeReason: log.overtime_reason ?? '',
+  }
+}
+
 function getWorkLogClockMinutes(
   workDate: string,
   value: string | null | undefined,
@@ -1153,6 +1199,7 @@ function App() {
     confirmPassword: '',
   })
   const [logs, setLogs] = useState<WorkLog[]>([])
+  const [editingWorkLogId, setEditingWorkLogId] = useState<string | null>(null)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [adminCreateUserForm, setAdminCreateUserForm] =
     useState<AdminCreateUserForm>(initialAdminCreateUserForm)
@@ -1247,6 +1294,7 @@ function App() {
       if (!nextSession) {
         setProfile(null)
         setLogs([])
+        setEditingWorkLogId(null)
       }
 
       if (event === 'PASSWORD_RECOVERY') {
@@ -1343,6 +1391,10 @@ function App() {
           return currentForm
         }
 
+        if (editingWorkLogId) {
+          return currentForm
+        }
+
         return {
           ...currentForm,
           isHoliday: holidayName !== null,
@@ -1355,6 +1407,7 @@ function App() {
     }
   }, [
     customHolidays,
+    editingWorkLogId,
     form.workDate,
     settingsForm.saturdayPolicy,
     settingsForm.weeklyHolidayDay,
@@ -1693,9 +1746,10 @@ function App() {
     (fixedOvertimeMinutes / 60) * standardHourlyWage * 1.5
   const fixedHolidayPay =
     (fixedHolidayMinutes / 60) * standardHourlyWage * 1.5
+  const fixedAllowancePayTotal = fixedOvertimePay + fixedHolidayPay
   const contractBasePay = Math.max(
     0,
-    monthlySalary - fixedOvertimePay - fixedHolidayPay,
+    monthlySalary - fixedAllowancePayTotal,
   )
   const actualOvertimeMinutes = payrollLogs.reduce(
     (total, log) => total + log.overtime_minutes,
@@ -1732,8 +1786,7 @@ function App() {
     additionalNightPay +
     additionalHolidayPay +
     additionalHolidayOvertimePay
-  const monthlyTotal =
-    contractBasePay + fixedOvertimePay + fixedHolidayPay + additionalPayTotal
+  const monthlyTotal = contractBasePay + fixedAllowancePayTotal + additionalPayTotal
   const monthlyNonTaxablePay =
     Number(settingsForm.monthlyNonTaxablePay) || 0
   const monthlyTaxablePay = Math.max(0, monthlyTotal - monthlyNonTaxablePay)
@@ -1749,12 +1802,15 @@ function App() {
     Number(workTargetChildCount) || 0,
     settingsForm.localIncomeTaxRate,
   )
+  const monthlyTaxTotal = monthlyTax.total
   const monthlyDeductions = monthlyInsurance.total + monthlyTax.total
+  const monthlyNetPay = Math.max(0, monthlyTotal - monthlyDeductions)
   const userDisplayName = `${profile?.name ?? '사용자'}${
     profile?.position ? ` ${profile.position}` : ''
   }`
+  const editingWorkLog = logs.find((log) => log.id === editingWorkLogId) ?? null
   const hasSavedWorkLogForSelectedDate = logs.some(
-    (log) => log.work_date === form.workDate,
+    (log) => log.work_date === form.workDate && log.id !== editingWorkLogId,
   )
   const isSelectedWorkDateBeforeHire = isDateBeforeHireDate(
     form.workDate,
@@ -2249,6 +2305,11 @@ function App() {
     await supabase.auth.signOut()
   }
 
+  function clearWorkLogEditState() {
+    setEditingWorkLogId(null)
+    setSaveMessage('')
+  }
+
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaveMessage('')
@@ -2263,12 +2324,18 @@ function App() {
       return
     }
 
-    const { data: existingLog, error: duplicateCheckError } = await supabase
+    let duplicateQuery = supabase
       .from('work_logs')
       .select('id')
       .eq('user_id', workTargetUserId)
       .eq('work_date', form.workDate)
-      .maybeSingle()
+
+    if (editingWorkLogId) {
+      duplicateQuery = duplicateQuery.neq('id', editingWorkLogId)
+    }
+
+    const { data: existingLog, error: duplicateCheckError } =
+      await duplicateQuery.maybeSingle()
 
     if (duplicateCheckError) {
       setSaveMessage(duplicateCheckError.message)
@@ -2290,14 +2357,33 @@ function App() {
       leaveMinutes,
       leavePay,
     )
-    const { error } = await supabase.from('work_logs').insert(payload)
 
-    if (error) {
-      setSaveMessage(error.message)
-      return
+    if (editingWorkLogId) {
+      const { error } = await supabase
+        .from('work_logs')
+        .update(payload)
+        .eq('id', editingWorkLogId)
+        .eq('user_id', workTargetUserId)
+        .select('id')
+        .single()
+
+      if (error) {
+        setSaveMessage(error.message)
+        return
+      }
+    } else {
+      const { error } = await supabase.from('work_logs').insert(payload)
+
+      if (error) {
+        setSaveMessage(error.message)
+        return
+      }
     }
 
-    setToastMessage('근무기록을 저장했습니다.')
+    setToastMessage(
+      editingWorkLogId ? '근무기록을 수정했습니다.' : '근무기록을 저장했습니다.',
+    )
+    setEditingWorkLogId(null)
     setForm({
       ...initialForm,
       workDate: form.workDate,
@@ -2308,6 +2394,28 @@ function App() {
       overtimeReason: '',
     })
     await loadLogs()
+  }
+
+  function handleEditLog(log: WorkLog) {
+    setEditingWorkLogId(log.id)
+    setSelectedHolidayName(null)
+    setSaveMessage('')
+    setForm(buildWorkFormFromLog(log))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleCancelWorkLogEdit() {
+    setEditingWorkLogId(null)
+    setSaveMessage('')
+    setForm({
+      ...initialForm,
+      workDate: form.workDate,
+      workStart: settingsForm.defaultRegularStart,
+      workEnd: settingsForm.defaultRegularEnd,
+      noCommute: true,
+      leaveType: 'none',
+      overtimeReason: '',
+    })
   }
 
   async function handleSaveProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -2517,6 +2625,7 @@ function App() {
 
     const nextYear = holidayForm.date.slice(0, 4)
     const nextMonth = holidayForm.date.slice(5, 7)
+    clearWorkLogEditState()
     setSelectedYear(nextYear)
     setSelectedMonth(nextMonth)
     const holidayNames = await loadMonthlyHolidaySettings(nextYear, nextMonth)
@@ -3069,6 +3178,10 @@ function App() {
     if (error) {
       setSaveMessage(error.message)
       return
+    }
+
+    if (editingWorkLogId === id) {
+      setEditingWorkLogId(null)
     }
 
     await loadLogs()
@@ -3954,6 +4067,7 @@ function App() {
                               className="secondary-button compact-button"
                               onClick={(event) => {
                                 event.stopPropagation()
+                                clearWorkLogEditState()
                                 setSelectedAdminUser(user)
                                 setActivePage('work')
                               }}
@@ -5332,7 +5446,10 @@ function App() {
             <div className="month-picker" aria-label="워킹캘린더 조회 월">
               <select
                 value={selectedYear}
-                onChange={(event) => setSelectedYear(event.target.value)}
+                onChange={(event) => {
+                  clearWorkLogEditState()
+                  setSelectedYear(event.target.value)
+                }}
               >
                 {yearOptions.map((year) => (
                   <option
@@ -5346,7 +5463,10 @@ function App() {
               </select>
               <select
                 value={selectedMonth}
-                onChange={(event) => setSelectedMonth(event.target.value)}
+                onChange={(event) => {
+                  clearWorkLogEditState()
+                  setSelectedMonth(event.target.value)
+                }}
               >
                 {Array.from({ length: 12 }, (_, index) => {
                   const month = String(index + 1).padStart(2, '0')
@@ -5628,18 +5748,40 @@ function App() {
             </label>
           </div>
 
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={hasSavedWorkLogForSelectedDate || isSelectedWorkDateBeforeHire}
-          >
-            <Save size={18} />
-            {isSelectedWorkDateBeforeHire
-              ? '입사 전 날짜'
-              : hasSavedWorkLogForSelectedDate
-                ? '이미 저장된 근무일'
-                : '근무기록 저장'}
-          </button>
+          {editingWorkLog && (
+            <p className="edit-mode-message">
+              <Pencil size={16} />
+              {formatWorkDateWithWeekday(editingWorkLog.work_date)} 근무기록 수정 중
+            </p>
+          )}
+          <div className="form-actions">
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={
+                hasSavedWorkLogForSelectedDate || isSelectedWorkDateBeforeHire
+              }
+            >
+              <Save size={18} />
+              {isSelectedWorkDateBeforeHire
+                ? '입사 전 날짜'
+                : hasSavedWorkLogForSelectedDate
+                  ? '이미 저장된 근무일'
+                  : editingWorkLogId
+                    ? '근무기록 수정'
+                    : '근무기록 저장'}
+            </button>
+            {editingWorkLogId && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleCancelWorkLogEdit}
+              >
+                <X size={17} />
+                수정 취소
+              </button>
+            )}
+          </div>
           {isSelectedWorkDateBeforeHire && (
             <p className="message warning-message">
               입사일자 이전 날짜는 급여 산정과 근무 저장에서 제외됩니다.
@@ -5693,7 +5835,10 @@ function App() {
           <div className="month-picker" aria-label="근무기록 조회 월">
             <select
               value={selectedYear}
-              onChange={(event) => setSelectedYear(event.target.value)}
+              onChange={(event) => {
+                clearWorkLogEditState()
+                setSelectedYear(event.target.value)
+              }}
             >
               {yearOptions.map((year) => (
                 <option
@@ -5707,7 +5852,10 @@ function App() {
             </select>
             <select
               value={selectedMonth}
-              onChange={(event) => setSelectedMonth(event.target.value)}
+              onChange={(event) => {
+                clearWorkLogEditState()
+                setSelectedMonth(event.target.value)
+              }}
             >
               {Array.from({ length: 12 }, (_, index) => {
                 const month = String(index + 1).padStart(2, '0')
@@ -5730,83 +5878,85 @@ function App() {
             <strong>{formatCurrency(monthlyTotal)}</strong>
           </div>
           <div className="month-total compact">
-            <span>공제 계산 기준액</span>
-            <strong>{formatCurrency(monthlyTaxablePay)}</strong>
-          </div>
-        </div>
-        <div className="allowance-grid">
-          <div>
             <span>기본급 추정</span>
             <strong>{formatCurrency(contractBasePay)}</strong>
           </div>
-          <div>
-            <span>고정 연장수당 · {formatAllowanceHours(fixedOvertimeMinutes)}</span>
-            <strong>{formatCurrency(fixedOvertimePay)}</strong>
-          </div>
-          <div>
-            <span>고정 휴일수당 · {formatAllowanceHours(fixedHolidayMinutes)}</span>
-            <strong>{formatCurrency(fixedHolidayPay)}</strong>
-          </div>
-          <div>
-            <span>추가 연장수당 · {formatAllowanceHours(additionalOvertimeMinutes)}</span>
-            <strong>{formatCurrency(additionalOvertimePay)}</strong>
-          </div>
-          <div>
-            <span>추가 야간수당 · {formatAllowanceHours(additionalNightMinutes)}</span>
-            <strong>{formatCurrency(additionalNightPay)}</strong>
-          </div>
-          <div>
-            <span>추가 휴일수당 · {formatAllowanceHours(additionalHolidayMinutes)}</span>
-            <strong>{formatCurrency(additionalHolidayPay)}</strong>
-          </div>
-          <div>
-            <span>
-              추가 휴일연장수당 · {formatAllowanceHours(additionalHolidayOvertimeMinutes)}
-            </span>
-            <strong>{formatCurrency(additionalHolidayOvertimePay)}</strong>
-          </div>
         </div>
-        <div className="deduction-grid">
-          <div>
-            <span>국민연금 {settingsForm.pensionRate}%</span>
-            <strong>{formatCurrency(monthlyInsurance.pension)}</strong>
-          </div>
-          <div>
-            <span>건강보험 {settingsForm.healthInsuranceRate}%</span>
-            <strong>{formatCurrency(monthlyInsurance.health)}</strong>
-          </div>
-          <div>
-            <span>장기요양 {settingsForm.longTermCareRate}%</span>
-            <strong>{formatCurrency(monthlyInsurance.longTermCare)}</strong>
-          </div>
-          <div>
-            <span>고용보험 {settingsForm.employmentInsuranceRate}%</span>
-            <strong>{formatCurrency(monthlyInsurance.employment)}</strong>
-          </div>
-          <div>
-            <span>소득세 추정</span>
-            <strong>{formatCurrency(monthlyTax.incomeTax)}</strong>
-          </div>
-          <div>
-            <span>지방소득세 {settingsForm.localIncomeTaxRate}%</span>
-            <strong>{formatCurrency(monthlyTax.localIncomeTax)}</strong>
-          </div>
+        <div className="allowance-grid">
+          <article className="allowance-card">
+            <div className="summary-card-header">
+              <span>고정 연장 수당</span>
+              <strong>{formatCurrency(fixedAllowancePayTotal)}</strong>
+            </div>
+            <dl className="summary-lines">
+              <div>
+                <dt>고정 연장 · {formatAllowanceHours(fixedOvertimeMinutes)}</dt>
+                <dd>{formatCurrency(fixedOvertimePay)}</dd>
+              </div>
+              <div>
+                <dt>고정 휴일 · {formatAllowanceHours(fixedHolidayMinutes)}</dt>
+                <dd>{formatCurrency(fixedHolidayPay)}</dd>
+              </div>
+            </dl>
+          </article>
+          <article className="allowance-card additional">
+            <div className="summary-card-header">
+              <span>추가 수당</span>
+              <strong>{formatCurrency(additionalPayTotal)}</strong>
+            </div>
+            <dl className="summary-lines">
+              <div>
+                <dt>추가 연장 · {formatAllowanceHours(additionalOvertimeMinutes)}</dt>
+                <dd>{formatCurrency(additionalOvertimePay)}</dd>
+              </div>
+              <div>
+                <dt>추가 야간 · {formatAllowanceHours(additionalNightMinutes)}</dt>
+                <dd>{formatCurrency(additionalNightPay)}</dd>
+              </div>
+              <div>
+                <dt>추가 휴일 · {formatAllowanceHours(additionalHolidayMinutes)}</dt>
+                <dd>{formatCurrency(additionalHolidayPay)}</dd>
+              </div>
+              <div>
+                <dt>
+                  추가 휴일연장 · {formatAllowanceHours(
+                    additionalHolidayOvertimeMinutes,
+                  )}
+                </dt>
+                <dd>{formatCurrency(additionalHolidayOvertimePay)}</dd>
+              </div>
+            </dl>
+          </article>
         </div>
-        <div className="deduction-summary">
-          <div>
-            <span>총 예상 공제</span>
+        <article className="tax-summary-card">
+          <div className="summary-card-header">
+            <span>세금·공제</span>
             <strong>{formatCurrency(monthlyDeductions)}</strong>
           </div>
-          <div className="net">
-            <span>예상 실수령</span>
-            <strong>{formatCurrency(Math.max(0, monthlyTotal - monthlyDeductions))}</strong>
-          </div>
-          <p>
+          <dl className="summary-lines tax-lines">
+            <div>
+              <dt>공제 계산 기준액</dt>
+              <dd>{formatCurrency(monthlyTaxablePay)}</dd>
+            </div>
+            <div>
+              <dt>4대보험 합계</dt>
+              <dd>{formatCurrency(monthlyInsurance.total)}</dd>
+            </div>
+            <div>
+              <dt>소득세·지방소득세</dt>
+              <dd>{formatCurrency(monthlyTaxTotal)}</dd>
+            </div>
+            <div className="net-line">
+              <dt>예상 실수령</dt>
+              <dd>{formatCurrency(monthlyNetPay)}</dd>
+            </div>
+          </dl>
+          <p className="summary-note">
             4대보험은 근로자 부담분, 세금은 1인 기준 추정치입니다. 산재보험은
             사업주 부담이며, 부양가족·자녀·비과세 급여에 따라 실제 공제액은
             달라질 수 있습니다.
           </p>
-        </div>
+        </article>
         <div className="history-list">
           {monthlyRows.length === 0 ? (
             <p className="empty-state">선택한 월에 저장된 근무기록이 없습니다.</p>
@@ -5819,6 +5969,7 @@ function App() {
                 <span>야간근로</span>
                 <span>휴일근로</span>
                 <span>예상 일급</span>
+                <span>메모</span>
                 <span></span>
               </div>
               {monthlyRows.map(({ date, log, holiday }) => {
@@ -5838,6 +5989,7 @@ function App() {
                       <span>0분</span>
                       <span>유급휴일 · {holiday.name}</span>
                       <strong>{formatCurrency(holiday.totalPay)}</strong>
+                      <p className="log-memo muted">메모 없음</p>
                       <span></span>
                     </article>
                   )
@@ -5848,7 +6000,24 @@ function App() {
                 }
 
                 return (
-                  <article className="log-row" key={log.id}>
+                  <article
+                    className={`log-row ${
+                      editingWorkLogId === log.id ? 'is-editing' : ''
+                    }`}
+                    key={log.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleEditLog(log)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        handleEditLog(log)
+                      }
+                    }}
+                    aria-label={`${formatWorkDateWithWeekday(
+                      log.work_date,
+                    )} 근무기록 수정`}
+                  >
                     <div className="history-date">
                       <strong
                         className={
@@ -5878,10 +6047,23 @@ function App() {
                         : formatMinutes(log.holiday_minutes)}
                     </span>
                     <strong>{formatCurrency(log.total_pay)}</strong>
+                    <p
+                      className={`log-memo ${log.overtime_reason ? '' : 'muted'}`}
+                      title={log.overtime_reason ?? '메모 없음'}
+                    >
+                      {log.overtime_reason ?? '메모 없음'}
+                    </p>
                     <button
                       type="button"
                       className="icon-button danger"
-                      onClick={() => handleDelete(log.id)}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleDelete(log.id)
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      aria-label={`${formatWorkDateWithWeekday(
+                        log.work_date,
+                      )} 근무기록 삭제`}
                     >
                       <Trash2 size={17} />
                     </button>
