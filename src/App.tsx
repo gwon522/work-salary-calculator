@@ -1751,6 +1751,7 @@ function App() {
     0,
     monthlySalary - fixedAllowancePayTotal,
   )
+  const contractPayTotal = contractBasePay + fixedAllowancePayTotal
   const actualOvertimeMinutes = payrollLogs.reduce(
     (total, log) => total + log.overtime_minutes,
     0,
@@ -5872,23 +5873,17 @@ function App() {
             </select>
           </div>
         </div>
-        <div className="month-summary-grid">
-          <div className="month-total">
-            <span>{selectedYear}년 {Number(selectedMonth)}월 예상 임금</span>
-            <strong>{formatCurrency(monthlyTotal)}</strong>
-          </div>
-          <div className="month-total compact">
-            <span>기본급 추정</span>
-            <strong>{formatCurrency(contractBasePay)}</strong>
-          </div>
-        </div>
         <div className="allowance-grid">
           <article className="allowance-card">
             <div className="summary-card-header">
-              <span>고정 연장 수당</span>
-              <strong>{formatCurrency(fixedAllowancePayTotal)}</strong>
+              <span>기본급·고정 수당</span>
+              <strong>{formatCurrency(contractPayTotal)}</strong>
             </div>
             <dl className="summary-lines">
+              <div className="base-line">
+                <dt>기본급 추정</dt>
+                <dd>{formatCurrency(contractBasePay)}</dd>
+              </div>
               <div>
                 <dt>고정 연장 · {formatAllowanceHours(fixedOvertimeMinutes)}</dt>
                 <dd>{formatCurrency(fixedOvertimePay)}</dd>
@@ -5946,8 +5941,12 @@ function App() {
               <dt>소득세·지방소득세</dt>
               <dd>{formatCurrency(monthlyTaxTotal)}</dd>
             </div>
+            <div className="gross-line">
+              <dt>예상 세전 급여</dt>
+              <dd>{formatCurrency(monthlyTotal)}</dd>
+            </div>
             <div className="net-line">
-              <dt>예상 실수령</dt>
+              <dt>예상 실수령액</dt>
               <dd>{formatCurrency(monthlyNetPay)}</dd>
             </div>
           </dl>

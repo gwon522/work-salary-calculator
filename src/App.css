@@ -1575,8 +1575,7 @@ select:focus {
 }
 
 .result-list div,
-.log-row,
-.month-total {
+.log-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1699,30 +1698,11 @@ select:focus {
   font-weight: 900;
 }
 
-.month-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 18px 0 10px;
-}
-
-.month-total {
-  margin: 0;
-  padding: 14px 16px;
-  border-radius: 8px;
-  background: #eef5f2;
-  color: #43504c;
-}
-
-.month-total.compact {
-  background: #f7faf8;
-}
-
 .allowance-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin: 0 0 10px;
+  margin: 18px 0 10px;
 }
 
 .allowance-card,
@@ -1800,9 +1780,21 @@ select:focus {
   white-space: nowrap;
 }
 
-.tax-lines .net-line {
+.summary-lines .base-line dt,
+.summary-lines .base-line dd {
+  color: #0f473f;
+  font-size: 14px;
+}
+
+.tax-lines .gross-line {
   padding-top: 8px;
   border-top: 1px solid #f0c9ca;
+}
+
+.tax-lines .gross-line dt,
+.tax-lines .gross-line dd {
+  color: #17211f;
+  font-size: 14px;
 }
 
 .tax-lines .net-line dt,
@@ -2088,7 +2080,6 @@ select:focus {
   }
 
   .month-picker,
-  .month-summary-grid,
   .allowance-grid {
     grid-template-columns: 1fr;
   }
