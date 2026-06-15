@@ -378,6 +378,35 @@ function formatAllowanceHours(minutes: number) {
   return `${hours.toFixed(2)}시간`
 }
 
+function getInclusiveLimitStatus(
+  logs: WorkLog[],
+  limitMinutes: number,
+  getLogMinutes: (log: WorkLog) => number,
+) {
+  let cumulativeMinutes = 0
+  let exceededAt: string | null = null
+  let firstExceededMinutes = 0
+  const sortedLogs = [...logs].sort((firstLog, secondLog) =>
+    firstLog.work_date.localeCompare(secondLog.work_date),
+  )
+
+  sortedLogs.forEach((log) => {
+    cumulativeMinutes += Math.max(0, getLogMinutes(log))
+
+    if (!exceededAt && cumulativeMinutes > limitMinutes) {
+      exceededAt = log.work_date
+      firstExceededMinutes = cumulativeMinutes - limitMinutes
+    }
+  })
+
+  return {
+    limitMinutes,
+    usedMinutes: cumulativeMinutes,
+    exceededAt,
+    firstExceededMinutes,
+  }
+}
+
 function calculateAutoBreakMinutes(workMinutes: number) {
   return Math.floor(Math.max(0, workMinutes) / 240) * 30
 }
@@ -1770,6 +1799,16 @@ function App() {
       total + Math.max(0, log.holiday_minutes - (paidWorkdayMinutes || 480)),
     0,
   )
+  const inclusiveOvertimeStatus = getInclusiveLimitStatus(
+    payrollLogs,
+    fixedOvertimeMinutes,
+    (log) => log.overtime_minutes,
+  )
+  const inclusiveHolidayStatus = getInclusiveLimitStatus(
+    payrollLogs,
+    fixedHolidayMinutes,
+    (log) => log.holiday_minutes,
+  )
   const additionalOvertimeMinutes = actualOvertimeMinutes
   const additionalNightMinutes = actualNightMinutes
   const additionalHolidayMinutes = actualHolidayBaseMinutes
@@ -1866,6 +1905,10 @@ function App() {
           settingsForm.saturdayPolicy,
         ),
     )
+  const inclusiveLimitRows = [
+    { label: '연장 포괄', status: inclusiveOvertimeStatus },
+    { label: '휴일 포괄', status: inclusiveHolidayStatus },
+  ]
   const yearOptions = Array.from(
     { length: 5 },
     (_, index) => Number(currentYear) - 2 + index,
@@ -5921,6 +5964,32 @@ function App() {
                 <dd>{formatCurrency(additionalHolidayOvertimePay)}</dd>
               </div>
             </dl>
+            <div className="inclusive-limit-box">
+              <strong>포괄 초과 시점</strong>
+              {inclusiveLimitRows.map(({ label, status }) => (
+                <div
+                  className={`inclusive-limit-row ${
+                    status.exceededAt ? 'exceeded' : ''
+                  }`}
+                  key={label}
+                >
+                  <span>{label}</span>
+                  <p>
+                    {status.exceededAt
+                      ? `${formatWorkDateWithWeekday(
+                          status.exceededAt,
+                        )} · 초과 ${formatAllowanceHours(
+                          status.firstExceededMinutes,
+                        )}`
+                      : '초과 전'}
+                  </p>
+                  <small>
+                    누적 {formatAllowanceHours(status.usedMinutes)} / 한도{' '}
+                    {formatAllowanceHours(status.limitMinutes)}
+                  </small>
+                </div>
+              ))}
+            </div>
           </article>
         </div>
         <article className="tax-summary-card">

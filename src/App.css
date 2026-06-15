@@ -1786,6 +1786,50 @@ select:focus {
   font-size: 14px;
 }
 
+.inclusive-limit-box {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #d6ddf0;
+}
+
+.inclusive-limit-box > strong {
+  color: #25312e;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inclusive-limit-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 3px 10px;
+  align-items: baseline;
+}
+
+.inclusive-limit-row span {
+  color: #66746f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inclusive-limit-row p {
+  margin: 0;
+  color: #0f473f;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inclusive-limit-row.exceeded p {
+  color: #b4232c;
+}
+
+.inclusive-limit-row small {
+  grid-column: 2;
+  color: #7a8581;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .tax-lines .gross-line {
   padding-top: 8px;
   border-top: 1px solid #f0c9ca;
