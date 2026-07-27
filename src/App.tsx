@@ -94,7 +94,12 @@ type WorkLog = {
   total_pay: number
 }
 
-type LeaveType = 'none' | 'full' | 'morning_half' | 'afternoon_half'
+type LeaveType =
+  | 'none'
+  | 'full'
+  | 'full_work'
+  | 'morning_half'
+  | 'afternoon_half'
 
 type WorkForm = {
   workDate: string
@@ -302,6 +307,7 @@ const positionOptions = [
 const leaveOptions: Array<{ value: LeaveType; label: string }> = [
   { value: 'none', label: '휴가 없음' },
   { value: 'full', label: '연차' },
+  { value: 'full_work', label: '연차근무' },
   { value: 'morning_half', label: '오전반차' },
   { value: 'afternoon_half', label: '오후반차' },
 ]
@@ -618,6 +624,51 @@ function getLeaveLabel(leaveType: string | null | undefined) {
   return leaveOptions.find((option) => option.value === leaveType)?.label ?? '휴가'
 }
 
+function hasLeaveType(log: Pick<WorkLog, 'leave_type'> | null | undefined) {
+  return Boolean(log?.leave_type && log.leave_type !== 'none')
+}
+
+function getLoggedWorkMinutes(
+  log: Pick<
+    WorkLog,
+    'regular_minutes' | 'overtime_minutes' | 'holiday_minutes'
+  >,
+) {
+  return log.regular_minutes + log.overtime_minutes + log.holiday_minutes
+}
+
+function isLeaveWorkLog(
+  log:
+    | Pick<
+        WorkLog,
+        'leave_type' | 'regular_minutes' | 'overtime_minutes' | 'holiday_minutes'
+      >
+    | null
+    | undefined,
+) {
+  if (!log || !hasLeaveType(log)) {
+    return false
+  }
+
+  return getLoggedWorkMinutes(log) > 0
+}
+
+function isFullLeaveWorkLog(
+  log:
+    | Pick<
+        WorkLog,
+        'leave_type' | 'regular_minutes' | 'overtime_minutes' | 'holiday_minutes'
+      >
+    | null
+    | undefined,
+) {
+  if (!log || log.leave_type !== 'full_work') {
+    return false
+  }
+
+  return getLoggedWorkMinutes(log) > 0
+}
+
 function normalizeLeaveType(leaveType: string | null | undefined): LeaveType {
   return leaveOptions.some((option) => option.value === leaveType)
     ? (leaveType as LeaveType)
@@ -925,7 +976,7 @@ function getWorkbookSheetTargets(workbookDocument: XMLDocument, relsDocument: XM
 }
 
 function getLeaveMinutes(leaveType: LeaveType, paidWorkdayMinutes: number) {
-  if (leaveType === 'full') {
+  if (leaveType === 'full' || leaveType === 'full_work') {
     return paidWorkdayMinutes
   }
 
@@ -950,6 +1001,13 @@ function getWorkRangeForLeaveType(
     return {
       workStart: defaultStart,
       workEnd: defaultStart,
+    }
+  }
+
+  if (leaveType === 'full_work') {
+    return {
+      workStart: defaultStart,
+      workEnd: defaultEnd,
     }
   }
 
@@ -1809,10 +1867,15 @@ function App() {
     fixedHolidayMinutes,
     (log) => log.holiday_minutes,
   )
+  const actualLeaveWorkMinutes = payrollLogs.reduce(
+    (total, log) => total + (isFullLeaveWorkLog(log) ? log.regular_minutes : 0),
+    0,
+  )
   const additionalOvertimeMinutes = actualOvertimeMinutes
   const additionalNightMinutes = actualNightMinutes
   const additionalHolidayMinutes = actualHolidayBaseMinutes
   const additionalHolidayOvertimeMinutes = actualHolidayOvertimeMinutes
+  const additionalLeaveWorkMinutes = actualLeaveWorkMinutes
   const additionalOvertimePay =
     (additionalOvertimeMinutes / 60) * standardHourlyWage * 1.5
   const additionalNightPay =
@@ -1821,11 +1884,14 @@ function App() {
     (additionalHolidayMinutes / 60) * standardHourlyWage * 1.5
   const additionalHolidayOvertimePay =
     (additionalHolidayOvertimeMinutes / 60) * standardHourlyWage * 2
+  const additionalLeaveWorkPay =
+    (additionalLeaveWorkMinutes / 60) * standardHourlyWage
   const additionalPayTotal =
     additionalOvertimePay +
     additionalNightPay +
     additionalHolidayPay +
-    additionalHolidayOvertimePay
+    additionalHolidayOvertimePay +
+    additionalLeaveWorkPay
   const monthlyTotal = contractBasePay + fixedAllowancePayTotal + additionalPayTotal
   const monthlyNonTaxablePay =
     Number(settingsForm.monthlyNonTaxablePay) || 0
@@ -1887,6 +1953,12 @@ function App() {
 
     if (log?.is_holiday) {
       return '휴일근로'
+    }
+
+    if (log && hasLeaveType(log)) {
+      const leaveLabel = getLeaveLabel(log.leave_type)
+
+      return isLeaveWorkLog(log) ? `${leaveLabel} · 근무` : leaveLabel
     }
 
     if (isSaturdayOffday) {
@@ -3061,7 +3133,9 @@ function App() {
 
         const scheduleLabel =
           log.leave_type && log.leave_type !== 'none'
-            ? '휴가'
+            ? isLeaveWorkLog(log)
+              ? '휴가근무'
+              : '휴가'
             : log.is_holiday || isMonthlyHolidayDate(log.work_date, log)
               ? getKoreanWeekday(log.work_date) === 0
                 ? '주휴일'
@@ -3074,27 +3148,29 @@ function App() {
         if (scheduleLabel) {
           setXmlCellValue(sheetContext, `D${row}`, scheduleLabel)
         }
-        setXmlCellValue(
-          sheetContext,
-          `G${row}`,
-          formatClockMinutes(
-            getWorkLogClockMinutes(log.work_date, log.office_clock_in),
-          ),
-        )
-        setXmlCellValue(
-          sheetContext,
-          `H${row}`,
-          formatClockMinutes(
-            getWorkLogClockMinutes(log.work_date, log.office_clock_out),
-          ),
-        )
-        const isAfterRegularEnd =
-          getWorkLogClockMinutes(log.work_date, log.office_clock_out) >
-          regularEndMinutes
+        if (!hasLeaveType(log) || isLeaveWorkLog(log)) {
+          setXmlCellValue(
+            sheetContext,
+            `G${row}`,
+            formatClockMinutes(
+              getWorkLogClockMinutes(log.work_date, log.office_clock_in),
+            ),
+          )
+          setXmlCellValue(
+            sheetContext,
+            `H${row}`,
+            formatClockMinutes(
+              getWorkLogClockMinutes(log.work_date, log.office_clock_out),
+            ),
+          )
+          const isAfterRegularEnd =
+            getWorkLogClockMinutes(log.work_date, log.office_clock_out) >
+            regularEndMinutes
 
-        setXmlCellValue(sheetContext, `I${row}`, 'X')
-        setXmlCellValue(sheetContext, `J${row}`, isAfterRegularEnd ? 'O' : null)
-        setXmlCellValue(sheetContext, `K${row}`, isAfterRegularEnd ? 'O' : null)
+          setXmlCellValue(sheetContext, `I${row}`, 'X')
+          setXmlCellValue(sheetContext, `J${row}`, isAfterRegularEnd ? 'O' : null)
+          setXmlCellValue(sheetContext, `K${row}`, isAfterRegularEnd ? 'O' : null)
+        }
         setXmlCellValue(sheetContext, `L${row}`, log.overtime_reason ?? null)
       }
 
@@ -5564,9 +5640,8 @@ function App() {
               const paidHoliday = isBeforeHire
                 ? undefined
                 : paidHolidaysByDate.get(day.date)
-              const hasLeave = Boolean(
-                log?.leave_type && log.leave_type !== 'none',
-              )
+              const hasLeave = hasLeaveType(log)
+              const hasLeaveWork = isLeaveWorkLog(log)
               const isHolidayDate = Boolean(
                 log?.is_holiday || paidHoliday || paidHolidayNames.has(day.date),
               )
@@ -5602,6 +5677,7 @@ function App() {
                     {log?.leave_type && log.leave_type !== 'none' && (
                       <span>{getLeaveLabel(log.leave_type)}</span>
                     )}
+                    {hasLeaveWork && <span>근무</span>}
                     {paidHoliday && <span>유급휴일</span>}
                   </div>
                   {isBeforeHire ? (
@@ -5609,7 +5685,7 @@ function App() {
                   ) : log ? (
                     <div className="calendar-work-card">
                       <span>
-                        {log.leave_type === 'full'
+                        {log.leave_type === 'full' && !hasLeaveWork
                           ? getLeaveLabel(log.leave_type)
                           : `${formatCalendarTime(
                               log,
@@ -5952,6 +6028,10 @@ function App() {
                 <dd>{formatCurrency(additionalNightPay)}</dd>
               </div>
               <div>
+                <dt>휴가근무 · {formatAllowanceHours(additionalLeaveWorkMinutes)}</dt>
+                <dd>{formatCurrency(additionalLeaveWorkPay)}</dd>
+              </div>
+              <div>
                 <dt>추가 휴일 · {formatAllowanceHours(additionalHolidayMinutes)}</dt>
                 <dd>{formatCurrency(additionalHolidayPay)}</dd>
               </div>
@@ -6106,11 +6186,15 @@ function App() {
                         {getMonthlyDayStatus(log.work_date, log)}
                       </span>
                     </div>
-                    <span>{formatMinutes(log.regular_minutes + log.overtime_minutes + log.holiday_minutes + (log.leave_minutes || 0))}</span>
+                    <span>
+                      {formatMinutes(
+                        getLoggedWorkMinutes(log) + (log.leave_minutes || 0),
+                      )}
+                    </span>
                     <span>{formatMinutes(log.overtime_minutes)}</span>
                     <span>{formatMinutes(log.night_minutes)}</span>
                     <span>
-                      {log.leave_type && log.leave_type !== 'none'
+                      {hasLeaveType(log)
                         ? getLeaveLabel(log.leave_type)
                         : formatMinutes(log.holiday_minutes)}
                     </span>
