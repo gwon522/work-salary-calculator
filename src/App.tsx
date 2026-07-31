@@ -305,7 +305,7 @@ const positionOptions = [
 ]
 
 const leaveOptions: Array<{ value: LeaveType; label: string }> = [
-  { value: 'none', label: '휴가 없음' },
+  { value: 'none', label: '미해당' },
   { value: 'full', label: '연차' },
   { value: 'full_work', label: '연차근무' },
   { value: 'morning_half', label: '오전반차' },
@@ -621,7 +621,7 @@ function minutesToTime(minutes: number) {
 }
 
 function getLeaveLabel(leaveType: string | null | undefined) {
-  return leaveOptions.find((option) => option.value === leaveType)?.label ?? '휴가'
+  return leaveOptions.find((option) => option.value === leaveType)?.label ?? '연차'
 }
 
 function hasLeaveType(log: Pick<WorkLog, 'leave_type'> | null | undefined) {
@@ -818,16 +818,22 @@ function getOrCreateCell(context: SheetXmlContext, address: string) {
   return cell
 }
 
-function clearCellValue(cell: Element) {
+function clearCellValue(cell: Element, { preserveFormula = false } = {}) {
+  const hasFormula = getSpreadsheetChildren(cell, 'f').length > 0
+
   Array.from(cell.childNodes).forEach((child) => {
     if (
       child.nodeType === Node.ELEMENT_NODE &&
-      ['f', 'v', 'is'].includes((child as Element).localName)
+      ['v', 'is', ...(preserveFormula ? [] : ['f'])].includes(
+        (child as Element).localName,
+      )
     ) {
       cell.removeChild(child)
     }
   })
-  cell.removeAttribute('t')
+  if (!preserveFormula || !hasFormula) {
+    cell.removeAttribute('t')
+  }
 }
 
 function toExcelDateSerial(date: Date) {
@@ -843,9 +849,10 @@ function setXmlCellValue(
   value: string | number | Date | null | undefined,
 ) {
   const cell = getOrCreateCell(context, address)
-  clearCellValue(cell)
+  const isBlankValue = value === null || value === undefined || value === ''
+  clearCellValue(cell, { preserveFormula: isBlankValue })
 
-  if (value === null || value === undefined || value === '') {
+  if (isBlankValue) {
     return
   }
 
@@ -875,6 +882,67 @@ function setXmlTimeCellValue(
     address,
     minutes === null || minutes === undefined ? null : minutes / (24 * 60),
   )
+}
+
+function materializeScheduleFormulas(context: SheetXmlContext) {
+  for (let row = 4; row <= 33; row += 1) {
+    const cell = getOrCreateCell(context, `D${row}`)
+    const formula = getSpreadsheetChildren(cell, 'f')[0]
+
+    if (!formula) {
+      continue
+    }
+
+    formula.textContent = `IF(E${row}="토","휴무",IF(E${row}="일","주휴일",""))`
+    ;['t', 'ref', 'si'].forEach((attribute) => {
+      formula.removeAttribute(attribute)
+    })
+  }
+}
+
+function removeCalcChainReferences(
+  zip: JSZip,
+  contentTypesDocument: XMLDocument | null,
+  workbookRelsDocument: XMLDocument,
+) {
+  if (contentTypesDocument) {
+    Array.from(contentTypesDocument.getElementsByTagName('Override')).forEach(
+      (override) => {
+        if (override.getAttribute('PartName') === '/xl/calcChain.xml') {
+          override.parentNode?.removeChild(override)
+        }
+      },
+    )
+  }
+
+  Array.from(workbookRelsDocument.getElementsByTagName('Relationship')).forEach(
+    (relationship) => {
+      const isCalcChain =
+        relationship
+          .getAttribute('Type')
+          ?.endsWith('/officeDocument/2006/relationships/calcChain') ||
+        relationship.getAttribute('Target') === 'calcChain.xml'
+
+      if (isCalcChain) {
+        relationship.parentNode?.removeChild(relationship)
+      }
+    },
+  )
+  zip.remove('xl/calcChain.xml')
+}
+
+function ensureWorkbookRecalculation(workbookDocument: XMLDocument) {
+  const workbook = workbookDocument.documentElement
+  let calcPr = getSpreadsheetChildren(workbook, 'calcPr')[0]
+
+  if (!calcPr) {
+    calcPr = createSpreadsheetElement(workbookDocument, 'calcPr')
+    workbook.appendChild(calcPr)
+  }
+
+  calcPr.setAttribute('calcMode', 'auto')
+  calcPr.setAttribute('fullCalcOnLoad', '1')
+  calcPr.setAttribute('forceFullCalc', '1')
 }
 
 function getSafeSheetName(name: string, usedSheetNames: Set<string>) {
@@ -3026,6 +3094,7 @@ function App() {
     const zip = await JSZip.loadAsync(templateBuffer)
     const workbookXmlFile = zip.file('xl/workbook.xml')
     const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels')
+    const contentTypesFile = zip.file('[Content_Types].xml')
 
     if (!workbookXmlFile || !workbookRelsFile) {
       throw new Error('근태 기록 템플릿 구조를 확인할 수 없습니다.')
@@ -3037,6 +3106,11 @@ function App() {
     const workbookRelsDocument = parseSpreadsheetXml(
       await workbookRelsFile.async('text'),
     )
+    const contentTypesDocument = contentTypesFile
+      ? parseSpreadsheetXml(await contentTypesFile.async('text'))
+      : null
+    removeCalcChainReferences(zip, contentTypesDocument, workbookRelsDocument)
+    ensureWorkbookRecalculation(workbookDocument)
     const sheetTargets = getWorkbookSheetTargets(
       workbookDocument,
       workbookRelsDocument,
@@ -3080,6 +3154,7 @@ function App() {
         document: sheetDocument,
         sheetData,
       }
+      materializeScheduleFormulas(sheetContext)
       const user = selectedUsers[sheetIndex - 1]
       const userLogs = user ? logsByUser.get(user.id) ?? [] : []
       const logsByDate = new Map(userLogs.map((log) => [log.work_date, log]))
@@ -3133,9 +3208,7 @@ function App() {
 
         const scheduleLabel =
           log.leave_type && log.leave_type !== 'none'
-            ? isLeaveWorkLog(log)
-              ? '휴가근무'
-              : '휴가'
+            ? '연차'
             : log.is_holiday || isMonthlyHolidayDate(log.work_date, log)
               ? getKoreanWeekday(log.work_date) === 0
                 ? '주휴일'
@@ -3178,6 +3251,10 @@ function App() {
     }
 
     zip.file('xl/workbook.xml', serializeSpreadsheetXml(workbookDocument))
+    zip.file('xl/_rels/workbook.xml.rels', serializeSpreadsheetXml(workbookRelsDocument))
+    if (contentTypesDocument) {
+      zip.file('[Content_Types].xml', serializeSpreadsheetXml(contentTypesDocument))
+    }
     if (dashboardTarget && dashboardDocument) {
       zip.file(dashboardTarget.path, serializeSpreadsheetXml(dashboardDocument))
     }
@@ -5783,7 +5860,7 @@ function App() {
               </span>
             </label>
             <label className="leave-field">
-              휴가
+              연차
               <select
                 value={form.leaveType}
                 onChange={(event) => {
@@ -6028,7 +6105,7 @@ function App() {
                 <dd>{formatCurrency(additionalNightPay)}</dd>
               </div>
               <div>
-                <dt>휴가근무 · {formatAllowanceHours(additionalLeaveWorkMinutes)}</dt>
+                <dt>연차근무 · {formatAllowanceHours(additionalLeaveWorkMinutes)}</dt>
                 <dd>{formatCurrency(additionalLeaveWorkPay)}</dd>
               </div>
               <div>
@@ -6310,7 +6387,7 @@ function ResultRows({
       </div>
       {leaveMinutes > 0 && (
         <div className="result-row-add">
-          <dt>휴가 유급시간</dt>
+          <dt>연차 유급시간</dt>
           <dd>{formatMinutes(leaveMinutes)}</dd>
         </div>
       )}
