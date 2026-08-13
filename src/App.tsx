@@ -695,9 +695,18 @@ function buildWorkFormFromLog(log: WorkLog): WorkForm {
   const workStart = dateTimeToTimeValue(log.office_clock_in)
   const workEnd = dateTimeToTimeValue(log.office_clock_out)
   const hasCommute = log.commute_minutes > 0
-  const commuteEnd = hasCommute ? workEnd : initialForm.commuteEnd
+  const hasStoredCommuteRange = Boolean(
+    log.remote_clock_in && log.remote_clock_out,
+  )
+  const commuteEnd = hasCommute
+    ? hasStoredCommuteRange
+      ? dateTimeToTimeValue(log.remote_clock_out)
+      : workEnd
+    : initialForm.commuteEnd
   const commuteStart = hasCommute
-    ? minutesToTime(timeToMinutes(commuteEnd) - log.commute_minutes)
+    ? hasStoredCommuteRange
+      ? dateTimeToTimeValue(log.remote_clock_in)
+      : minutesToTime(timeToMinutes(commuteEnd) - log.commute_minutes)
     : initialForm.commuteStart
 
   return {
@@ -6415,8 +6424,12 @@ function buildWorkLogPayload(
       form.workEnd,
       form.workStart,
     ),
-    remote_clock_in: null,
-    remote_clock_out: null,
+    remote_clock_in: form.noCommute
+      ? null
+      : toDateTimeLocal(form.workDate, form.commuteStart),
+    remote_clock_out: form.noCommute
+      ? null
+      : toDateTimeLocal(form.workDate, form.commuteEnd, form.commuteStart),
     commute_minutes: commuteMinutes,
     break_minutes: breakMinutes,
     is_holiday: form.isHoliday,
