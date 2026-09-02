@@ -3366,6 +3366,11 @@ function App() {
         return
       }
 
+      if (!data?.length) {
+        setSettingsMessage('해당 월에 다운로드할 근무 기록이 없습니다.')
+        return
+      }
+
       const selectedUsers = sortOrganizationUsers(
         adminUsers.filter((user) => selectedWorkLogUserIds.includes(user.id)),
       )
@@ -3392,6 +3397,11 @@ function App() {
 
     if (!profile?.id) {
       setCalendarMessage('로그인이 필요합니다.')
+      return
+    }
+
+    if (payrollLogs.length === 0) {
+      setCalendarMessage('해당 월에 다운로드할 근무 기록이 없습니다.')
       return
     }
 

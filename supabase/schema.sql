@@ -488,22 +488,14 @@ values ('worklog-templates', 'worklog-templates', false)
 on conflict (id) do update
 set public = false;
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_policies
-    where schemaname = 'storage'
-      and tablename = 'objects'
-      and policyname = 'read worklog templates as admin'
-  ) then
-    create policy "read worklog templates as admin"
-    on storage.objects
-    for select
-    to authenticated
-    using (
-      bucket_id = 'worklog-templates'
-      and public.is_admin(auth.uid())
-    );
-  end if;
-end $$;
+drop policy if exists "read worklog templates as admin" on storage.objects;
+drop policy if exists "read worklog template as authenticated" on storage.objects;
+
+create policy "read worklog template as authenticated"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'worklog-templates'
+  and name = 'stl-monthly-worklog-template.xlsx'
+);
