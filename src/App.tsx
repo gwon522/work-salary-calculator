@@ -6811,8 +6811,15 @@ function App() {
                 </div>
               )}
             </dl>
-            <div className="inclusive-limit-box">
-              <strong>포괄 초과 시점</strong>
+          </article>
+          <article className="allowance-card inclusive">
+            <div className="summary-card-header">
+              <span>포괄 초과 시점</span>
+            </div>
+            <p className="allowance-card-description">
+              고정수당에 포함된 시간 한도 기준
+            </p>
+            <div className="inclusive-limit-box standalone">
               {inclusiveLimitRows.map(({ label, status }) => (
                 <div
                   className={`inclusive-limit-row ${

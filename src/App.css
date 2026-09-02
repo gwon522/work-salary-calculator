@@ -2176,7 +2176,7 @@ select:focus {
 
 .allowance-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   align-items: start;
   margin: 18px 0 10px;
@@ -2198,6 +2198,18 @@ select:focus {
 .allowance-card.additional {
   border-color: #d6ddf0;
   background: #f6f8fc;
+}
+
+.allowance-card.inclusive {
+  border-color: #eadfbd;
+  background: #fffcf4;
+}
+
+.allowance-card-description {
+  margin: -5px 0 0;
+  color: #87938f;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .tax-summary-card {
@@ -2297,6 +2309,11 @@ select:focus {
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid #d6ddf0;
+}
+
+.inclusive-limit-box.standalone {
+  padding-top: 12px;
+  border-color: #eadfbd;
 }
 
 .inclusive-limit-box > strong {
