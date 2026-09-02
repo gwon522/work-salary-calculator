@@ -6688,9 +6688,12 @@ function App() {
 
       <section className="history-section">
         <div className="history-top">
-          <div className="section-title">
-            <CalendarDays size={20} />
-            <h2>월별 근무기록</h2>
+          <div className="history-heading">
+            <div className="section-title">
+              <CalendarDays size={20} />
+              <h2>월별 근무기록</h2>
+            </div>
+            <p>급여 구성과 날짜별 근무 내역을 한눈에 확인하세요.</p>
           </div>
           <div className="month-picker" aria-label="근무기록 조회 월">
             <select
@@ -6759,30 +6762,54 @@ function App() {
               <strong>{formatCurrency(additionalPayTotal)}</strong>
             </div>
             <dl className="summary-lines">
-              <div>
-                <dt>추가 연장 · {formatAllowanceHours(additionalOvertimeMinutes)}</dt>
-                <dd>{formatCurrency(additionalOvertimePay)}</dd>
-              </div>
-              <div>
-                <dt>추가 야간 · {formatAllowanceHours(additionalNightMinutes)}</dt>
-                <dd>{formatCurrency(additionalNightPay)}</dd>
-              </div>
-              <div>
-                <dt>연차 중 근무 · {formatAllowanceHours(additionalLeaveWorkMinutes)}</dt>
-                <dd>{formatCurrency(additionalLeaveWorkPay)}</dd>
-              </div>
-              <div>
-                <dt>추가 휴일 · {formatAllowanceHours(additionalHolidayMinutes)}</dt>
-                <dd>{formatCurrency(additionalHolidayPay)}</dd>
-              </div>
-              <div>
-                <dt>
-                  추가 휴일연장 · {formatAllowanceHours(
-                    additionalHolidayOvertimeMinutes,
-                  )}
-                </dt>
-                <dd>{formatCurrency(additionalHolidayOvertimePay)}</dd>
-              </div>
+              {additionalOvertimeMinutes > 0 && (
+                <div>
+                  <dt>
+                    추가 연장 · {formatAllowanceHours(additionalOvertimeMinutes)}
+                  </dt>
+                  <dd>{formatCurrency(additionalOvertimePay)}</dd>
+                </div>
+              )}
+              {additionalNightMinutes > 0 && (
+                <div>
+                  <dt>
+                    추가 야간 · {formatAllowanceHours(additionalNightMinutes)}
+                  </dt>
+                  <dd>{formatCurrency(additionalNightPay)}</dd>
+                </div>
+              )}
+              {additionalLeaveWorkMinutes > 0 && (
+                <div>
+                  <dt>
+                    연차일 기본근로 ·{' '}
+                    {formatAllowanceHours(additionalLeaveWorkMinutes)}
+                  </dt>
+                  <dd>{formatCurrency(additionalLeaveWorkPay)}</dd>
+                </div>
+              )}
+              {additionalHolidayMinutes > 0 && (
+                <div>
+                  <dt>
+                    추가 휴일 · {formatAllowanceHours(additionalHolidayMinutes)}
+                  </dt>
+                  <dd>{formatCurrency(additionalHolidayPay)}</dd>
+                </div>
+              )}
+              {additionalHolidayOvertimeMinutes > 0 && (
+                <div>
+                  <dt>
+                    추가 휴일연장 ·{' '}
+                    {formatAllowanceHours(additionalHolidayOvertimeMinutes)}
+                  </dt>
+                  <dd>{formatCurrency(additionalHolidayOvertimePay)}</dd>
+                </div>
+              )}
+              {additionalPayTotal === 0 && (
+                <div className="summary-empty">
+                  <dt>이번 달 추가 수당 없음</dt>
+                  <dd>{formatCurrency(0)}</dd>
+                </div>
+              )}
             </dl>
             <div className="inclusive-limit-box">
               <strong>포괄 초과 시점</strong>
@@ -6908,18 +6935,35 @@ function App() {
                           {getMonthlyDayStatus(date)}
                         </span>
                       </div>
-                      <div className="history-pay-metric">
+                      <div
+                        className="history-pay-metric history-cell"
+                        data-label="일일 근무시간"
+                      >
                         <span>{formatMinutes(holiday.paidMinutes)}</span>
                         <small>유급휴일</small>
                       </div>
-                      <span>0분</span>
-                      <span>0분</span>
-                      <span>유급휴일 · {holiday.name}</span>
-                      <strong className="history-total-pay">
+                      <span className="history-cell" data-label="연장근로">
+                        0분
+                      </span>
+                      <span className="history-cell" data-label="야간근로">
+                        0분
+                      </span>
+                      <span className="history-cell" data-label="휴일근로">
+                        유급휴일 · {holiday.name}
+                      </span>
+                      <strong
+                        className="history-total-pay history-cell"
+                        data-label="예상 일급"
+                      >
                         = {formatCurrency(holiday.totalPay)}
                       </strong>
-                      <p className="log-memo muted">메모 없음</p>
-                      <span></span>
+                      <p
+                        className="log-memo muted history-cell"
+                        data-label="메모"
+                      >
+                        메모 없음
+                      </p>
+                      <span className="history-row-action" />
                     </article>
                   )
                 }
@@ -6967,7 +7011,10 @@ function App() {
                         {getMonthlyDayStatus(log.work_date, log)}
                       </span>
                     </div>
-                    <div className="history-pay-metric history-work-duration">
+                    <div
+                      className="history-pay-metric history-work-duration history-cell"
+                      data-label="일일 근무시간"
+                    >
                       <span>
                         {formatMinutes(
                           getLoggedWorkMinutes(log) + (log.leave_minutes || 0),
@@ -6984,7 +7031,10 @@ function App() {
                         </small>
                       )}
                     </div>
-                    <div className="history-pay-metric">
+                    <div
+                      className="history-pay-metric history-cell"
+                      data-label="연장근로"
+                    >
                       <span>{formatMinutes(log.overtime_minutes)}</span>
                       {log.overtime_pay > 0 && (
                         <small className="history-pay-detail">
@@ -6992,7 +7042,10 @@ function App() {
                         </small>
                       )}
                     </div>
-                    <div className="history-pay-metric">
+                    <div
+                      className="history-pay-metric history-cell"
+                      data-label="야간근로"
+                    >
                       <span>{formatMinutes(log.night_minutes)}</span>
                       {log.night_pay > 0 && (
                         <small className="history-pay-detail">
@@ -7000,7 +7053,10 @@ function App() {
                         </small>
                       )}
                     </div>
-                    <div className="history-pay-metric">
+                    <div
+                      className="history-pay-metric history-cell"
+                      data-label="휴일근로"
+                    >
                       <span>
                         {hasLeaveType(log)
                           ? getLeaveLabel(log.leave_type)
@@ -7016,11 +7072,17 @@ function App() {
                         </small>
                       )}
                     </div>
-                    <strong className="history-total-pay">
+                    <strong
+                      className="history-total-pay history-cell"
+                      data-label="예상 일급"
+                    >
                       = {formatCurrency(log.total_pay)}
                     </strong>
                     <p
-                      className={`log-memo ${log.overtime_reason ? '' : 'muted'}`}
+                      className={`log-memo history-cell ${
+                        log.overtime_reason ? '' : 'muted'
+                      }`}
+                      data-label="메모"
                       title={log.overtime_reason ?? '메모 없음'}
                     >
                       {log.overtime_reason ?? '메모 없음'}
