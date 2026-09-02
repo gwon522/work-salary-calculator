@@ -3,7 +3,9 @@ import {
   Calculator,
   CalendarDays,
   Clock,
+  Copy,
   Download,
+  ExternalLink,
   Grid3X3,
   Home,
   Info,
@@ -630,6 +632,25 @@ function minutesToTime(minutes: number) {
   const minute = normalizedMinutes % 60
 
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function getExtendedEndMinutes(start: string, end: string) {
+  const startMinutes = timeToMinutes(start)
+  const endMinutes = timeToMinutes(end)
+
+  return endMinutes < startMinutes ? endMinutes + 24 * 60 : endMinutes
+}
+
+function formatExtendedTime(minutes: number) {
+  const normalizedMinutes = Math.max(0, Math.round(minutes))
+  const hour = Math.floor(normalizedMinutes / 60)
+  const minute = normalizedMinutes % 60
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function formatCopyTimeRange(start: string, end: string, copyStart = start) {
+  return `${copyStart} ~ ${formatExtendedTime(getExtendedEndMinutes(start, end))}`
 }
 
 function getLeaveLabel(leaveType: string | null | undefined) {
@@ -1664,6 +1685,34 @@ function App() {
     timeToMinutes(form.workEnd) < timeToMinutes(form.workStart)
   const isNextDayCommuteEnd =
     !form.noCommute && timeToMinutes(form.commuteEnd) < timeToMinutes(form.commuteStart)
+  const isSelectedSaturdayOffday =
+    getKoreanWeekday(form.workDate) === 6 &&
+    settingsForm.saturdayPolicy === 'offday'
+  const shouldCopyFullWorkRange =
+    form.isHoliday || Boolean(selectedHolidayName) || isSelectedSaturdayOffday
+  const extendedWorkEndMinutes = getExtendedEndMinutes(
+    form.workStart,
+    form.workEnd,
+  )
+  const weekdayOvertimeStartMinutes = timeToMinutes(
+    settingsForm.defaultRegularEnd,
+  )
+  const hasCopyableWorkTime = shouldCopyFullWorkRange
+    ? grossWorkMinutes > 0
+    : extendedWorkEndMinutes > weekdayOvertimeStartMinutes
+  const workTimeCopyText = hasCopyableWorkTime
+    ? formatCopyTimeRange(
+        form.workStart,
+        form.workEnd,
+        shouldCopyFullWorkRange
+          ? form.workStart
+          : settingsForm.defaultRegularEnd,
+      )
+    : '연장근로 없음'
+  const commuteTimeCopyText = formatCopyTimeRange(
+    form.commuteStart,
+    form.commuteEnd,
+  )
   const workTargetUser = selectedAdminUser ?? profile
   const workTargetUserId = workTargetUser?.id ?? session?.user.id ?? ''
   const workTargetAnnualSalary =
@@ -2633,6 +2682,15 @@ function App() {
     if (data) {
       setEditingWorkLogId(data.id)
       setForm(buildWorkFormFromLog(data))
+    }
+  }
+
+  async function handleCopyTimeRange(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      setToastMessage(`${label}을 복사했습니다.`)
+    } catch {
+      setSaveMessage('시간을 복사하지 못했습니다. 다시 시도해주세요.')
     }
   }
 
@@ -6314,16 +6372,22 @@ function App() {
         <section className="workbench">
         <form className="input-panel" onSubmit={handleSave}>
           <div className="section-title work-title">
-            <div>
-              <Clock size={20} />
-              <h2>
-                근무 입력
-                {selectedAdminUser && (
-                  <span className="title-user-name">
-                    ({selectedAdminUser.name} {selectedAdminUser.position ?? '직급 없음'})
-                  </span>
-                )}
-              </h2>
+            <div className="work-title-heading">
+              <span className="work-title-icon">
+                <Clock size={20} />
+              </span>
+              <div className="work-title-copy">
+                <h2>
+                  근무 입력
+                  {selectedAdminUser && (
+                    <span className="title-user-name">
+                      ({selectedAdminUser.name}{' '}
+                      {selectedAdminUser.position ?? '직급 없음'})
+                    </span>
+                  )}
+                </h2>
+                <p>근무일과 시간을 입력하면 예상 급여가 바로 계산됩니다.</p>
+              </div>
             </div>
             {isAdmin && selectedAdminUser && (
               <button
@@ -6339,117 +6403,194 @@ function App() {
             )}
           </div>
 
-          <div className="form-grid">
-            <label className="date-field">
-              근무일
-              <input
-                type="date"
-                value={form.workDate}
-                min={workTargetHireDate || undefined}
-                onChange={(event) => handleWorkDateChange(event.target.value)}
-              />
-            </label>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={form.isHoliday}
-                onChange={(event) =>
-                  setForm({ ...form, isHoliday: event.target.checked })
-                }
-              />
-              휴일 근무
-              {selectedHolidayName && (
-                <span className="holiday-chip">{selectedHolidayName}</span>
-              )}
-              <span className="tooltip-wrap">
-                <Info size={15} />
-                <span className="tooltip-box" role="tooltip">
-                  휴일은 주휴일, 공휴일·대체공휴일, 근로자의 날, 회사 취업규칙이나
-                  근로계약에서 정한 휴일에 일한 경우를 기준으로 체크합니다.
-                </span>
-              </span>
-            </label>
-            <label className="leave-field">
-              연차
-              <select
-                value={form.leaveType}
-                onChange={(event) => {
-                  const leaveType = event.target.value as LeaveType
-                  const nextRange = getWorkRangeForLeaveType(
-                    leaveType,
-                    settingsForm.defaultRegularStart,
-                    settingsForm.defaultRegularEnd,
-                  )
+          <div className="work-form-layout">
+            <div className="work-form-overview">
+              <label className="modern-field">
+                <span className="field-label">근무일</span>
+                <input
+                  type="date"
+                  value={form.workDate}
+                  min={workTargetHireDate || undefined}
+                  onChange={(event) => handleWorkDateChange(event.target.value)}
+                />
+              </label>
+              <label className="modern-field">
+                <span className="field-label">연차 유형</span>
+                <select
+                  value={form.leaveType}
+                  onChange={(event) => {
+                    const leaveType = event.target.value as LeaveType
+                    const nextRange = getWorkRangeForLeaveType(
+                      leaveType,
+                      settingsForm.defaultRegularStart,
+                      settingsForm.defaultRegularEnd,
+                    )
 
-                  setForm({
-                    ...form,
-                    leaveType,
-                    ...(nextRange ?? {}),
-                    noCommute: leaveType === 'full' ? true : form.noCommute,
-                  })
-                }}
+                    setForm({
+                      ...form,
+                      leaveType,
+                      ...(nextRange ?? {}),
+                      noCommute: leaveType === 'full' ? true : form.noCommute,
+                    })
+                  }}
+                >
+                  {leaveOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label
+                className={`holiday-toggle ${form.isHoliday ? 'is-active' : ''}`}
               >
-                {leaveOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="range-line work-range">
-              <span className="range-title">근무시간</span>
-              <TimeBox
-                value={form.workStart}
-                onChange={(value) => setForm({ ...form, workStart: value })}
-                disabled={form.leaveType === 'full'}
-              />
-              <span>부터</span>
-              <TimeBox
-                value={form.workEnd}
-                onChange={(value) => setForm({ ...form, workEnd: value })}
-                disabled={form.leaveType === 'full'}
-              />
-              <span>까지</span>
-              {isNextDayWorkEnd && <span className="next-day-chip">다음날</span>}
-              <strong>{formatMinutes(grossWorkMinutes)}</strong>
-            </div>
-            <div className="range-line commute-range">
-              <span className="range-title">이동시간</span>
-              <TimeBox
-                value={form.commuteStart}
-                onChange={(value) => setForm({ ...form, commuteStart: value })}
-                disabled={form.noCommute || form.leaveType === 'full'}
-              />
-              <span>부터</span>
-              <TimeBox
-                value={form.commuteEnd}
-                onChange={(value) => setForm({ ...form, commuteEnd: value })}
-                disabled={form.noCommute || form.leaveType === 'full'}
-              />
-              <span>까지</span>
-              {isNextDayCommuteEnd && <span className="next-day-chip">다음날</span>}
-              <strong>{formatMinutes(commuteMinutes)}</strong>
-              <label className="inline-check">
                 <input
                   type="checkbox"
-                  checked={form.noCommute}
+                  checked={form.isHoliday}
                   onChange={(event) =>
-                    setForm({ ...form, noCommute: event.target.checked })
+                    setForm({ ...form, isHoliday: event.target.checked })
                   }
-                  disabled={form.leaveType === 'full'}
                 />
-                이동시간 없음
+                <span className="toggle-check" aria-hidden="true" />
+                <span className="holiday-toggle-copy">
+                  <strong>휴일 근무</strong>
+                  <small>{selectedHolidayName ?? '해당하는 경우 선택'}</small>
+                </span>
+                <span className="tooltip-wrap" tabIndex={0}>
+                  <Info size={15} />
+                  <span className="tooltip-box" role="tooltip">
+                    휴일은 주휴일, 공휴일·대체공휴일, 근로자의 날, 회사 취업규칙이나
+                    근로계약에서 정한 휴일에 일한 경우를 기준으로 체크합니다.
+                  </span>
+                </span>
               </label>
             </div>
-            <label className="overtime-reason-field">
-              연장근무 사유
+
+            <div className="time-card-grid">
+              <section className="time-entry-card">
+                <div className="time-card-header">
+                  <div>
+                    <strong>근무시간</strong>
+                    <small>출근부터 퇴근까지</small>
+                  </div>
+                  <span className="duration-pill">
+                    {formatMinutes(grossWorkMinutes)}
+                  </span>
+                </div>
+                <div className="time-range-controls">
+                  <TimeBox
+                    label="근무 시작 시간"
+                    value={form.workStart}
+                    onChange={(value) => setForm({ ...form, workStart: value })}
+                    disabled={form.leaveType === 'full'}
+                  />
+                  <span className="time-arrow">→</span>
+                  <TimeBox
+                    label="근무 종료 시간"
+                    value={form.workEnd}
+                    onChange={(value) => setForm({ ...form, workEnd: value })}
+                    disabled={form.leaveType === 'full'}
+                  />
+                  {isNextDayWorkEnd && (
+                    <span className="next-day-chip">다음날</span>
+                  )}
+                </div>
+                <div className="copy-time-row">
+                  <span>
+                    {shouldCopyFullWorkRange ? '근무시간 복사' : '연장근로 복사'}
+                  </span>
+                  <code>{workTimeCopyText}</code>
+                  <button
+                    type="button"
+                    className="copy-time-button"
+                    disabled={!hasCopyableWorkTime}
+                    onClick={() =>
+                      handleCopyTimeRange(workTimeCopyText, '근무시간')
+                    }
+                  >
+                    <Copy size={14} />
+                    복사
+                  </button>
+                </div>
+              </section>
+
+              <section
+                className={`time-entry-card commute-time-card ${
+                  form.noCommute ? 'is-disabled' : ''
+                }`}
+              >
+                <div className="time-card-header">
+                  <div>
+                    <strong>이동시간</strong>
+                    <small>실근로에서 차감</small>
+                  </div>
+                  <label className="switch-check">
+                    <input
+                      type="checkbox"
+                      checked={!form.noCommute}
+                      onChange={(event) =>
+                        setForm({ ...form, noCommute: !event.target.checked })
+                      }
+                      disabled={form.leaveType === 'full'}
+                    />
+                    <span className="switch-track" aria-hidden="true">
+                      <span />
+                    </span>
+                    <span>{form.noCommute ? '차감 안 함' : '차감 적용'}</span>
+                  </label>
+                </div>
+                <div className="time-range-controls">
+                  <TimeBox
+                    label="이동 시작 시간"
+                    value={form.commuteStart}
+                    onChange={(value) =>
+                      setForm({ ...form, commuteStart: value })
+                    }
+                    disabled={form.noCommute || form.leaveType === 'full'}
+                  />
+                  <span className="time-arrow">→</span>
+                  <TimeBox
+                    label="이동 종료 시간"
+                    value={form.commuteEnd}
+                    onChange={(value) => setForm({ ...form, commuteEnd: value })}
+                    disabled={form.noCommute || form.leaveType === 'full'}
+                  />
+                  {isNextDayCommuteEnd && (
+                    <span className="next-day-chip">다음날</span>
+                  )}
+                  <span className="duration-pill commute-duration">
+                    −{formatMinutes(commuteMinutes)}
+                  </span>
+                </div>
+                <div className="copy-time-row">
+                  <span>이동시간 복사</span>
+                  <code>{commuteTimeCopyText}</code>
+                  <button
+                    type="button"
+                    className="copy-time-button"
+                    disabled={form.noCommute || commuteMinutes === 0}
+                    onClick={() =>
+                      handleCopyTimeRange(commuteTimeCopyText, '이동시간')
+                    }
+                  >
+                    <Copy size={14} />
+                    복사
+                  </button>
+                </div>
+              </section>
+            </div>
+
+            <label className="modern-field overtime-reason-field">
+              <span className="field-label">
+                연장근무 사유 <small>선택 입력</small>
+              </span>
               <textarea
                 value={form.overtimeReason}
                 onChange={(event) =>
                   setForm({ ...form, overtimeReason: event.target.value })
                 }
                 placeholder="연장근무가 발생한 경우 사유를 입력하세요."
-                rows={3}
+                rows={2}
               />
             </label>
           </div>
@@ -6491,6 +6632,15 @@ function App() {
                 수정 취소
               </button>
             )}
+            <a
+              className="approval-link-button"
+              href="https://gw.mailplug.com/approval/make-draft/1004/write"
+              target="_blank"
+              rel="noreferrer"
+            >
+              연장근로 올리러 가기
+              <ExternalLink size={16} />
+            </a>
           </div>
           {isSelectedWorkDateBeforeHire && (
             <p className="message warning-message">
@@ -6673,6 +6823,42 @@ function App() {
               <dd>{formatCurrency(monthlyTaxablePay)}</dd>
             </div>
             <div>
+              <dt>
+                국민연금
+                <span className="deduction-rate">
+                  {settingsForm.pensionRate || '0'}%
+                </span>
+              </dt>
+              <dd>{formatCurrency(monthlyInsurance.pension)}</dd>
+            </div>
+            <div>
+              <dt>
+                건강보험
+                <span className="deduction-rate">
+                  {settingsForm.healthInsuranceRate || '0'}%
+                </span>
+              </dt>
+              <dd>{formatCurrency(monthlyInsurance.health)}</dd>
+            </div>
+            <div>
+              <dt>
+                장기요양보험
+                <span className="deduction-rate">
+                  건강보험료의 {settingsForm.longTermCareRate || '0'}%
+                </span>
+              </dt>
+              <dd>{formatCurrency(monthlyInsurance.longTermCare)}</dd>
+            </div>
+            <div>
+              <dt>
+                고용보험
+                <span className="deduction-rate">
+                  {settingsForm.employmentInsuranceRate || '0'}%
+                </span>
+              </dt>
+              <dd>{formatCurrency(monthlyInsurance.employment)}</dd>
+            </div>
+            <div className="insurance-total-line">
               <dt>4대보험 합계</dt>
               <dd>{formatCurrency(monthlyInsurance.total)}</dd>
             </div>
@@ -6703,7 +6889,6 @@ function App() {
               <div className="history-head">
                 <span>근무일</span>
                 <span>일일 근무시간</span>
-                <span>이동시간</span>
                 <span>연장근로</span>
                 <span>야간근로</span>
                 <span>휴일근로</span>
@@ -6723,12 +6908,16 @@ function App() {
                           {getMonthlyDayStatus(date)}
                         </span>
                       </div>
-                      <span>{formatMinutes(holiday.paidMinutes)}</span>
-                      <span>0분</span>
+                      <div className="history-pay-metric">
+                        <span>{formatMinutes(holiday.paidMinutes)}</span>
+                        <small>유급휴일</small>
+                      </div>
                       <span>0분</span>
                       <span>0분</span>
                       <span>유급휴일 · {holiday.name}</span>
-                      <strong>{formatCurrency(holiday.totalPay)}</strong>
+                      <strong className="history-total-pay">
+                        = {formatCurrency(holiday.totalPay)}
+                      </strong>
                       <p className="log-memo muted">메모 없음</p>
                       <span></span>
                     </article>
@@ -6778,20 +6967,58 @@ function App() {
                         {getMonthlyDayStatus(log.work_date, log)}
                       </span>
                     </div>
-                    <span>
-                      {formatMinutes(
-                        getLoggedWorkMinutes(log) + (log.leave_minutes || 0),
+                    <div className="history-pay-metric history-work-duration">
+                      <span>
+                        {formatMinutes(
+                          getLoggedWorkMinutes(log) + (log.leave_minutes || 0),
+                        )}
+                      </span>
+                      {log.regular_pay > 0 && (
+                        <small className="history-pay-detail">
+                          기본근로 = {formatCurrency(log.regular_pay)}
+                        </small>
                       )}
-                    </span>
-                    <span>{formatMinutes(log.commute_minutes || 0)}</span>
-                    <span>{formatMinutes(log.overtime_minutes)}</span>
-                    <span>{formatMinutes(log.night_minutes)}</span>
-                    <span>
-                      {hasLeaveType(log)
-                        ? getLeaveLabel(log.leave_type)
-                        : formatMinutes(log.holiday_minutes)}
-                    </span>
-                    <strong>{formatCurrency(log.total_pay)}</strong>
+                      {log.commute_minutes > 0 && (
+                        <small className="commute-deduction">
+                          이동시간 차감 −{formatMinutes(log.commute_minutes)}
+                        </small>
+                      )}
+                    </div>
+                    <div className="history-pay-metric">
+                      <span>{formatMinutes(log.overtime_minutes)}</span>
+                      {log.overtime_pay > 0 && (
+                        <small className="history-pay-detail">
+                          = {formatCurrency(log.overtime_pay)}
+                        </small>
+                      )}
+                    </div>
+                    <div className="history-pay-metric">
+                      <span>{formatMinutes(log.night_minutes)}</span>
+                      {log.night_pay > 0 && (
+                        <small className="history-pay-detail">
+                          = {formatCurrency(log.night_pay)}
+                        </small>
+                      )}
+                    </div>
+                    <div className="history-pay-metric">
+                      <span>
+                        {hasLeaveType(log)
+                          ? getLeaveLabel(log.leave_type)
+                          : formatMinutes(log.holiday_minutes)}
+                      </span>
+                      {(hasLeaveType(log) ? log.leave_pay : log.holiday_pay) >
+                        0 && (
+                        <small className="history-pay-detail">
+                          ={' '}
+                          {formatCurrency(
+                            hasLeaveType(log) ? log.leave_pay : log.holiday_pay,
+                          )}
+                        </small>
+                      )}
+                    </div>
+                    <strong className="history-total-pay">
+                      = {formatCurrency(log.total_pay)}
+                    </strong>
                     <p
                       className={`log-memo ${log.overtime_reason ? '' : 'muted'}`}
                       title={log.overtime_reason ?? '메모 없음'}
@@ -6837,10 +7064,12 @@ function AuthHeader() {
 }
 
 function TimeBox({
+  label,
   value,
   onChange,
   disabled = false,
 }: {
+  label?: string
   value: string
   onChange: (value: string) => void
   disabled?: boolean
@@ -6852,6 +7081,7 @@ function TimeBox({
       disabled={disabled}
       step="60"
       value={value}
+      aria-label={label}
       onChange={(event) => onChange(event.target.value)}
     />
   )
