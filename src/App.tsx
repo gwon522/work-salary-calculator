@@ -2650,11 +2650,12 @@ function App() {
     }
 
     setEditingWorkLogId(null)
-    setForm((currentForm) => ({
-      ...currentForm,
+    setForm({
+      ...initialForm,
       workDate: nextWorkDate,
-      isHoliday: false,
-    }))
+      workStart: settingsForm.defaultRegularStart,
+      workEnd: settingsForm.defaultRegularEnd,
+    })
 
     if (!nextWorkDate || !workTargetUserId) {
       return
@@ -6441,29 +6442,33 @@ function App() {
                   ))}
                 </select>
               </label>
-              <label
-                className={`holiday-toggle ${form.isHoliday ? 'is-active' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={form.isHoliday}
-                  onChange={(event) =>
-                    setForm({ ...form, isHoliday: event.target.checked })
-                  }
-                />
-                <span className="toggle-check" aria-hidden="true" />
-                <span className="holiday-toggle-copy">
-                  <strong>휴일 근무</strong>
-                  <small>{selectedHolidayName ?? '해당하는 경우 선택'}</small>
-                </span>
-                <span className="tooltip-wrap" tabIndex={0}>
-                  <Info size={15} />
-                  <span className="tooltip-box" role="tooltip">
-                    휴일은 주휴일, 공휴일·대체공휴일, 근로자의 날, 회사 취업규칙이나
-                    근로계약에서 정한 휴일에 일한 경우를 기준으로 체크합니다.
+              <div className="modern-field holiday-field">
+                <span className="field-label">근무 구분</span>
+                <label
+                  className={`holiday-toggle ${form.isHoliday ? 'is-active' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.isHoliday}
+                    onChange={(event) =>
+                      setForm({ ...form, isHoliday: event.target.checked })
+                    }
+                  />
+                  <span className="toggle-check" aria-hidden="true" />
+                  <span className="holiday-toggle-copy">
+                    <strong>휴일 근무</strong>
+                    <small>{selectedHolidayName ?? '해당하는 경우 선택'}</small>
                   </span>
-                </span>
-              </label>
+                  <span className="tooltip-wrap" tabIndex={0}>
+                    <Info size={15} />
+                    <span className="tooltip-box" role="tooltip">
+                      휴일은 주휴일, 공휴일·대체공휴일, 근로자의 날, 회사
+                      취업규칙이나 근로계약에서 정한 휴일에 일한 경우를 기준으로
+                      체크합니다.
+                    </span>
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div className="time-card-grid">
