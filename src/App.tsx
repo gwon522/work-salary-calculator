@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Calculator,
   CalendarDays,
@@ -251,8 +251,8 @@ const initialForm: WorkForm = {
   workDate: today,
   workStart: '09:00',
   workEnd: '22:00',
-  commuteStart: '18:00',
-  commuteEnd: '19:00',
+  commuteStart: '19:00',
+  commuteEnd: '20:00',
   noCommute: true,
   isHoliday: false,
   leaveType: 'none',
@@ -319,7 +319,7 @@ const positionOptions = [
 const leaveOptions: Array<{ value: LeaveType; label: string }> = [
   { value: 'none', label: '미해당' },
   { value: 'full', label: '연차' },
-  { value: 'full_work', label: '연차근무' },
+  { value: 'full_work', label: '연차 중 근무' },
   { value: 'morning_half', label: '오전반차' },
   { value: 'afternoon_half', label: '오후반차' },
 ]
@@ -1136,7 +1136,6 @@ function getWorkRangeForLeaveType(
   leaveType: LeaveType,
   defaultStart: string,
   defaultEnd: string,
-  breakMinutes: number,
 ) {
   if (leaveType === 'none') {
     return null
@@ -1156,26 +1155,16 @@ function getWorkRangeForLeaveType(
     }
   }
 
-  const defaultGrossMinutes = minutesFromTimeRange(defaultStart, defaultEnd)
-  const halfPaidMinutes = Math.round(
-    Math.max(0, defaultGrossMinutes - breakMinutes) / 2,
-  )
-  const halfGrossMinutes = halfPaidMinutes + breakMinutes
-
   if (leaveType === 'morning_half') {
     return {
-      workStart: minutesToTime(
-        timeToMinutes(defaultEnd) - halfGrossMinutes - breakMinutes,
-      ),
-      workEnd: defaultEnd,
+      workStart: '10:00',
+      workEnd: '14:00',
     }
   }
 
   return {
-    workStart: defaultStart,
-    workEnd: minutesToTime(
-      timeToMinutes(defaultStart) + halfGrossMinutes + breakMinutes,
-    ),
+    workStart: '15:00',
+    workEnd: '19:00',
   }
 }
 
@@ -1432,6 +1421,8 @@ function App() {
   })
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [editingWorkLogId, setEditingWorkLogId] = useState<string | null>(null)
+  const [isLoadingWorkLogForDate, setIsLoadingWorkLogForDate] = useState(false)
+  const workDateLookupRequestRef = useRef(0)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [adminCreateUserForm, setAdminCreateUserForm] =
     useState<AdminCreateUserForm>(initialAdminCreateUserForm)
@@ -1659,8 +1650,15 @@ function App() {
     return minutesFromTimeRange(form.workStart, form.workEnd)
   }, [form.workEnd, form.workStart])
   const breakMinutes = useMemo(() => {
+    if (
+      form.leaveType === 'morning_half' ||
+      form.leaveType === 'afternoon_half'
+    ) {
+      return 0
+    }
+
     return calculateAutoBreakMinutes(grossWorkMinutes)
-  }, [grossWorkMinutes])
+  }, [form.leaveType, grossWorkMinutes])
 
   const isNextDayWorkEnd =
     timeToMinutes(form.workEnd) < timeToMinutes(form.workStart)
@@ -2581,8 +2579,61 @@ function App() {
   }
 
   function clearWorkLogEditState() {
+    workDateLookupRequestRef.current += 1
+    setIsLoadingWorkLogForDate(false)
     setEditingWorkLogId(null)
     setSaveMessage('')
+  }
+
+  async function handleWorkDateChange(nextWorkDate: string) {
+    const lookupRequestId = workDateLookupRequestRef.current + 1
+    workDateLookupRequestRef.current = lookupRequestId
+    setIsLoadingWorkLogForDate(false)
+    setSelectedHolidayName(null)
+    setSaveMessage('')
+
+    const cachedLog = logs.find((log) => log.work_date === nextWorkDate)
+
+    if (cachedLog) {
+      setEditingWorkLogId(cachedLog.id)
+      setForm(buildWorkFormFromLog(cachedLog))
+      return
+    }
+
+    setEditingWorkLogId(null)
+    setForm((currentForm) => ({
+      ...currentForm,
+      workDate: nextWorkDate,
+      isHoliday: false,
+    }))
+
+    if (!nextWorkDate || !workTargetUserId) {
+      return
+    }
+
+    setIsLoadingWorkLogForDate(true)
+    const { data, error } = await supabase
+      .from('work_logs')
+      .select('*')
+      .eq('user_id', workTargetUserId)
+      .eq('work_date', nextWorkDate)
+      .maybeSingle()
+
+    if (workDateLookupRequestRef.current !== lookupRequestId) {
+      return
+    }
+
+    setIsLoadingWorkLogForDate(false)
+
+    if (error) {
+      setSaveMessage(error.message)
+      return
+    }
+
+    if (data) {
+      setEditingWorkLogId(data.id)
+      setForm(buildWorkFormFromLog(data))
+    }
   }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
@@ -2672,6 +2723,8 @@ function App() {
   }
 
   function handleEditLog(log: WorkLog) {
+    workDateLookupRequestRef.current += 1
+    setIsLoadingWorkLogForDate(false)
     setEditingWorkLogId(log.id)
     setSelectedHolidayName(null)
     setSaveMessage('')
@@ -2680,6 +2733,8 @@ function App() {
   }
 
   function handleCancelWorkLogEdit() {
+    workDateLookupRequestRef.current += 1
+    setIsLoadingWorkLogForDate(false)
     setEditingWorkLogId(null)
     setSaveMessage('')
     setForm({
@@ -6291,16 +6346,7 @@ function App() {
                 type="date"
                 value={form.workDate}
                 min={workTargetHireDate || undefined}
-                onChange={(event) => {
-                  const nextWorkDate = event.target.value
-
-                  setSelectedHolidayName(null)
-                  setForm({
-                    ...form,
-                    workDate: nextWorkDate,
-                    isHoliday: false,
-                  })
-                }}
+                onChange={(event) => handleWorkDateChange(event.target.value)}
               />
             </label>
             <label className="check-row">
@@ -6333,7 +6379,6 @@ function App() {
                     leaveType,
                     settingsForm.defaultRegularStart,
                     settingsForm.defaultRegularEnd,
-                    Number(settingsForm.defaultBreakMinutes) || 0,
                   )
 
                   setForm({
@@ -6420,11 +6465,15 @@ function App() {
               type="submit"
               className="primary-button"
               disabled={
-                hasSavedWorkLogForSelectedDate || isSelectedWorkDateBeforeHire
+                isLoadingWorkLogForDate ||
+                hasSavedWorkLogForSelectedDate ||
+                isSelectedWorkDateBeforeHire
               }
             >
               <Save size={18} />
-              {isSelectedWorkDateBeforeHire
+              {isLoadingWorkLogForDate
+                ? '근무기록 불러오는 중'
+                : isSelectedWorkDateBeforeHire
                 ? '입사 전 날짜'
                 : hasSavedWorkLogForSelectedDate
                   ? '이미 저장된 근무일'
@@ -6569,7 +6618,7 @@ function App() {
                 <dd>{formatCurrency(additionalNightPay)}</dd>
               </div>
               <div>
-                <dt>연차근무 · {formatAllowanceHours(additionalLeaveWorkMinutes)}</dt>
+                <dt>연차 중 근무 · {formatAllowanceHours(additionalLeaveWorkMinutes)}</dt>
                 <dd>{formatCurrency(additionalLeaveWorkPay)}</dd>
               </div>
               <div>
