@@ -1008,6 +1008,62 @@ function normalizeWeekdayFormula(document: XMLDocument) {
   )
 }
 
+function normalizeMonthlySummaryFormulaRanges(context: SheetXmlContext) {
+  const rangeUpdates = [
+    {
+      address: 'AE24',
+      replacements: [
+        ['Z3:Z32', 'Z3:Z33'],
+        ['D3:D32', 'D3:D33'],
+      ],
+    },
+    {
+      address: 'AC34',
+      replacements: [['AC3:AC32', 'AC3:AC33']],
+    },
+    {
+      address: 'AD34',
+      replacements: [['AD3:AD32', 'AD3:AD33']],
+    },
+    {
+      address: 'AF34',
+      replacements: [
+        ['AC3:AC32', 'AC3:AC33'],
+        ['D3:D32', 'D3:D33'],
+      ],
+    },
+    {
+      address: 'AF35',
+      replacements: [
+        ['AC3:AC32', 'AC3:AC33'],
+        ['D3:D32', 'D3:D33'],
+      ],
+    },
+    {
+      address: 'AF36',
+      replacements: [
+        ['AC3:AC32', 'AC3:AC33'],
+        ['D3:D32', 'D3:D33'],
+      ],
+    },
+  ]
+
+  rangeUpdates.forEach(({ address, replacements }) => {
+    const cell = getOrCreateCell(context, address)
+    const formula = getSpreadsheetChildren(cell, 'f')[0]
+
+    if (!formula?.textContent) {
+      return
+    }
+
+    formula.textContent = replacements.reduce(
+      (currentFormula, [currentRange, nextRange]) =>
+        currentFormula.split(currentRange).join(nextRange),
+      formula.textContent,
+    )
+  })
+}
+
 function downloadWorkbookBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -3163,6 +3219,7 @@ function App() {
         document: sheetDocument,
         sheetData,
       }
+      normalizeMonthlySummaryFormulaRanges(sheetContext)
       materializeScheduleFormulas(sheetContext)
       const user = selectedUsers[sheetIndex - 1]
       const userLogs = user ? logsByUser.get(user.id) ?? [] : []
