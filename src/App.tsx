@@ -188,6 +188,18 @@ type OrganizationDraft = {
   partId: string
 }
 
+type OrganizationTableName =
+  | 'organization_divisions'
+  | 'organization_teams'
+  | 'organization_parts'
+
+type OrganizationUnitEditor = {
+  tableName: OrganizationTableName
+  id: string
+  unitLabel: '본부' | '팀' | '파트'
+  name: string
+}
+
 type AdminCreateUserForm = {
   divisionId: string
   teamId: string
@@ -1488,16 +1500,18 @@ function App() {
   const [organizationUserEditor, setOrganizationUserEditor] =
     useState<AdminUser | null>(null)
   const [adminUserEditor, setAdminUserEditor] = useState<AdminUser | null>(null)
+  const [deletingAdminUserId, setDeletingAdminUserId] = useState<string | null>(
+    null,
+  )
   const [organizationHeadEditor, setOrganizationHeadEditor] = useState<{
-    tableName:
-      | 'organization_divisions'
-      | 'organization_teams'
-      | 'organization_parts'
+    tableName: OrganizationTableName
     id: string
     title: string
     roleLabel: string
     headUserId: string | null
   } | null>(null)
+  const [organizationUnitEditor, setOrganizationUnitEditor] =
+    useState<OrganizationUnitEditor | null>(null)
   const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false)
   const [isOrganizationModalOpen, setIsOrganizationModalOpen] = useState(false)
   const [holidayForm, setHolidayForm] = useState({
@@ -2152,8 +2166,12 @@ function App() {
     setOrganizationForm((currentForm) => ({
       ...currentForm,
       teamDivisionId:
-        currentForm.teamDivisionId || divisions[0]?.id || '',
-      partTeamId: currentForm.partTeamId || teams[0]?.id || '',
+        divisions.some((division) => division.id === currentForm.teamDivisionId)
+          ? currentForm.teamDivisionId
+          : divisions[0]?.id || '',
+      partTeamId: teams.some((team) => team.id === currentForm.partTeamId)
+        ? currentForm.partTeamId
+        : teams[0]?.id || '',
     }))
   }
 
@@ -2987,16 +3005,30 @@ function App() {
   }
 
   async function handleDeleteOrganizationUnit(
-    tableName:
-      | 'organization_divisions'
-      | 'organization_teams'
-      | 'organization_parts',
+    tableName: OrganizationTableName,
     id: string,
+    unitLabel: '본부' | '팀' | '파트',
+    unitName: string,
   ) {
     setSettingsMessage('')
 
     if (!session?.user.id || !isAdmin) {
       setSettingsMessage('관리자 권한이 필요합니다.')
+      return
+    }
+
+    const cascadeNotice =
+      tableName === 'organization_divisions'
+        ? ' 소속 팀과 파트도 함께 삭제됩니다.'
+        : tableName === 'organization_teams'
+          ? ' 소속 파트도 함께 삭제됩니다.'
+          : ''
+
+    if (
+      !window.confirm(
+        `${unitLabel} '${unitName}'을(를) 삭제할까요?${cascadeNotice}`,
+      )
+    ) {
       return
     }
 
@@ -3009,13 +3041,45 @@ function App() {
 
     await loadOrganizationUnits()
     await loadAdminUsers()
+    setToastMessage(`${unitLabel}을(를) 삭제했습니다.`)
+  }
+
+  async function handleUpdateOrganizationUnitName() {
+    setSettingsMessage('')
+
+    if (!session?.user.id || !isAdmin) {
+      setSettingsMessage('관리자 권한이 필요합니다.')
+      return
+    }
+
+    if (!organizationUnitEditor) {
+      return
+    }
+
+    const trimmedName = organizationUnitEditor.name.trim()
+
+    if (!trimmedName) {
+      setSettingsMessage(`${organizationUnitEditor.unitLabel}명을 입력해주세요.`)
+      return
+    }
+
+    const { error } = await supabase
+      .from(organizationUnitEditor.tableName)
+      .update({ name: trimmedName })
+      .eq('id', organizationUnitEditor.id)
+
+    if (error) {
+      setSettingsMessage(error.message)
+      return
+    }
+
+    await loadOrganizationUnits()
+    setOrganizationUnitEditor(null)
+    setToastMessage(`${organizationUnitEditor.unitLabel}명을 변경했습니다.`)
   }
 
   async function handleUpdateOrganizationHead(
-    tableName:
-      | 'organization_divisions'
-      | 'organization_teams'
-      | 'organization_parts',
+    tableName: OrganizationTableName,
     id: string,
     headUserId: string,
   ) {
@@ -3059,11 +3123,6 @@ function App() {
       settingsForm.monthlyInclusiveOvertimeHours,
       settingsForm.monthlyInclusiveHolidayHours,
     )
-
-    if (annualSalary <= 0 || standardHourlyWage <= 0) {
-      setSettingsMessage('연봉을 확인해주세요.')
-      return
-    }
 
     const { data, error } = await supabase
       .from('profiles')
@@ -3117,6 +3176,76 @@ function App() {
       setAdminUserEditor(null)
     }
     setToastMessage('사용자 조직을 저장했습니다.')
+  }
+
+  async function handleDeleteAdminUser(targetUser: AdminUser) {
+    setSettingsMessage('')
+
+    if (!session?.user.id || !isAdmin) {
+      setSettingsMessage('관리자 권한이 필요합니다.')
+      return
+    }
+
+    if (targetUser.id === session.user.id) {
+      setSettingsMessage('현재 로그인한 관리자 계정은 삭제할 수 없습니다.')
+      return
+    }
+
+    if (
+      !window.confirm(
+        `${targetUser.name} 계정을 삭제할까요? 로그인 계정과 모든 근무 기록이 영구 삭제됩니다.`,
+      )
+    ) {
+      return
+    }
+
+    setDeletingAdminUserId(targetUser.id)
+
+    try {
+      const { data, error } = await supabase.functions.invoke<{
+        deletedUserId?: string
+        message?: string
+      }>('admin-delete-user', {
+        body: { userId: targetUser.id },
+      })
+
+      if (error || data?.deletedUserId !== targetUser.id) {
+        setSettingsMessage(
+          data?.message ??
+            error?.message ??
+            '계정 삭제에 실패했습니다. Edge Function 배포 상태를 확인해주세요.',
+        )
+        return
+      }
+
+      setSelectedWorkLogUserIds((currentIds) =>
+        currentIds.filter((userId) => userId !== targetUser.id),
+      )
+      setSelectedAdminUser((currentUser) =>
+        currentUser?.id === targetUser.id ? null : currentUser,
+      )
+      setAdminUserEditor(null)
+      setAdminUserOrgDrafts((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts }
+        delete nextDrafts[targetUser.id]
+        return nextDrafts
+      })
+      setAdminUserProfileDrafts((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts }
+        delete nextDrafts[targetUser.id]
+        return nextDrafts
+      })
+      await Promise.all([loadAdminUsers(), loadOrganizationUnits()])
+      setSettingsMessage(`${targetUser.name} 계정을 삭제했습니다.`)
+    } catch (error) {
+      setSettingsMessage(
+        error instanceof Error
+          ? error.message
+          : '계정 삭제 중 오류가 발생했습니다.',
+      )
+    } finally {
+      setDeletingAdminUserId(null)
+    }
   }
 
   function toggleWorkLogUserSelection(userId: string) {
@@ -4297,7 +4426,7 @@ function App() {
                       </th>
                       <th>사용자</th>
                       <th>메일</th>
-                      <th>직급</th>
+                      <th>직급/직책</th>
                       <th>현재 소속</th>
                       <th>관리</th>
                     </tr>
@@ -4335,6 +4464,16 @@ function App() {
                         </td>
                         <td>
                           <div className="admin-user-actions">
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setAdminUserEditor(user)
+                              }}
+                            >
+                              정보 수정
+                            </button>
                             <button
                               type="button"
                               className="secondary-button compact-button"
@@ -4390,7 +4529,7 @@ function App() {
                       <strong>{formatCurrency(adminProfileEditorHourlyWage)}</strong>
                     </div>
                     <label>
-                      직급
+                      직급/직책
                       <select
                         value={adminProfileEditorDraft.position}
                         onChange={(event) =>
@@ -4547,14 +4686,37 @@ function App() {
                         ))}
                       </select>
                     </label>
-                    <button
-                      type="button"
-                      className="primary-button user-edit-save"
-                      onClick={() => handleSaveAdminUserOrganization(adminUserEditor)}
-                    >
-                      <Save size={18} />
-                      저장
-                    </button>
+                    <div className="user-edit-actions">
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() =>
+                          handleSaveAdminUserOrganization(adminUserEditor)
+                        }
+                      >
+                        <Save size={18} />
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button danger-button"
+                        disabled={
+                          deletingAdminUserId === adminUserEditor.id ||
+                          session?.user.id === adminUserEditor.id
+                        }
+                        onClick={() => handleDeleteAdminUser(adminUserEditor)}
+                        title={
+                          session?.user.id === adminUserEditor.id
+                            ? '현재 로그인한 계정은 삭제할 수 없습니다.'
+                            : undefined
+                        }
+                      >
+                        <Trash2 size={18} />
+                        {deletingAdminUserId === adminUserEditor.id
+                          ? '삭제 중...'
+                          : '계정 삭제'}
+                      </button>
+                    </div>
                   </div>
                 </section>
               </div>
@@ -4707,6 +4869,8 @@ function App() {
                             handleDeleteOrganizationUnit(
                               'organization_divisions',
                               division.id,
+                              '본부',
+                              division.name,
                             )
                           }
                           aria-label="본부 삭제"
@@ -4753,6 +4917,8 @@ function App() {
                                   handleDeleteOrganizationUnit(
                                     'organization_teams',
                                     team.id,
+                                    '팀',
+                                    team.name,
                                   )
                                 }
                                 aria-label="팀 삭제"
@@ -4795,6 +4961,8 @@ function App() {
                                         handleDeleteOrganizationUnit(
                                           'organization_parts',
                                           part.id,
+                                          '파트',
+                                          part.name,
                                         )
                                       }
                                       aria-label="파트 삭제"
@@ -5136,6 +5304,7 @@ function App() {
               조직 설정
             </button>
           </div>
+          {settingsMessage && <p className="message">{settingsMessage}</p>}
           {isOrganizationModalOpen && (
             <div
               className="modal-backdrop"
@@ -5294,20 +5463,42 @@ function App() {
                         <details className="organization-tree-item" key={division.id}>
                           <summary>
                             <span>{division.name}</span>
-                            <button
-                              type="button"
-                              className="icon-button danger"
-                              onClick={(event) => {
-                                event.preventDefault()
-                                handleDeleteOrganizationUnit(
-                                  'organization_divisions',
-                                  division.id,
-                                )
-                              }}
-                              aria-label="본부 삭제"
-                            >
-                              <Trash2 size={15} />
-                            </button>
+                            <div className="organization-tree-actions">
+                              <button
+                                type="button"
+                                className="icon-button"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  setOrganizationUnitEditor({
+                                    tableName: 'organization_divisions',
+                                    id: division.id,
+                                    unitLabel: '본부',
+                                    name: division.name,
+                                  })
+                                }}
+                                aria-label={`${division.name} 본부명 수정`}
+                              >
+                                <Pencil size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                className="icon-button danger"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  handleDeleteOrganizationUnit(
+                                    'organization_divisions',
+                                    division.id,
+                                    '본부',
+                                    division.name,
+                                  )
+                                }}
+                                aria-label={`${division.name} 본부 삭제`}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
                           </summary>
                           <div className="organization-tree-children">
                             {getTeamsForDivision(division.id).length === 0 ? (
@@ -5317,20 +5508,42 @@ function App() {
                                 <details className="organization-tree-item team" key={team.id}>
                                   <summary>
                                     <span>{team.name}</span>
-                                    <button
-                                      type="button"
-                                      className="icon-button danger"
-                                      onClick={(event) => {
-                                        event.preventDefault()
-                                        handleDeleteOrganizationUnit(
-                                          'organization_teams',
-                                          team.id,
-                                        )
-                                      }}
-                                      aria-label="팀 삭제"
-                                    >
-                                      <Trash2 size={15} />
-                                    </button>
+                                    <div className="organization-tree-actions">
+                                      <button
+                                        type="button"
+                                        className="icon-button"
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          setOrganizationUnitEditor({
+                                            tableName: 'organization_teams',
+                                            id: team.id,
+                                            unitLabel: '팀',
+                                            name: team.name,
+                                          })
+                                        }}
+                                        aria-label={`${team.name} 팀명 수정`}
+                                      >
+                                        <Pencil size={15} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="icon-button danger"
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          handleDeleteOrganizationUnit(
+                                            'organization_teams',
+                                            team.id,
+                                            '팀',
+                                            team.name,
+                                          )
+                                        }}
+                                        aria-label={`${team.name} 팀 삭제`}
+                                      >
+                                        <Trash2 size={15} />
+                                      </button>
+                                    </div>
                                   </summary>
                                   <div className="organization-tree-children part">
                                     {getPartsForTeam(team.id).length === 0 ? (
@@ -5339,19 +5552,38 @@ function App() {
                                       getPartsForTeam(team.id).map((part) => (
                                         <div className="organization-tree-leaf" key={part.id}>
                                           <span>{part.name}</span>
-                                          <button
-                                            type="button"
-                                            className="icon-button danger"
-                                            onClick={() =>
-                                              handleDeleteOrganizationUnit(
-                                                'organization_parts',
-                                                part.id,
-                                              )
-                                            }
-                                            aria-label="파트 삭제"
-                                          >
-                                            <Trash2 size={13} />
-                                          </button>
+                                          <div className="organization-tree-actions">
+                                            <button
+                                              type="button"
+                                              className="icon-button"
+                                              onClick={() =>
+                                                setOrganizationUnitEditor({
+                                                  tableName: 'organization_parts',
+                                                  id: part.id,
+                                                  unitLabel: '파트',
+                                                  name: part.name,
+                                                })
+                                              }
+                                              aria-label={`${part.name} 파트명 수정`}
+                                            >
+                                              <Pencil size={13} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="icon-button danger"
+                                              onClick={() =>
+                                                handleDeleteOrganizationUnit(
+                                                  'organization_parts',
+                                                  part.id,
+                                                  '파트',
+                                                  part.name,
+                                                )
+                                              }
+                                              aria-label={`${part.name} 파트 삭제`}
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
+                                          </div>
                                         </div>
                                       ))
                                     )}
@@ -5549,6 +5781,59 @@ function App() {
               </section>
             </div>
           )}
+          {organizationUnitEditor && (
+            <div
+              className="modal-backdrop"
+              onClick={() => setOrganizationUnitEditor(null)}
+            >
+              <section
+                className="holiday-modal organization-name-modal"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <div className="section-title">
+                    <Pencil size={20} />
+                    <h3>{organizationUnitEditor.unitLabel}명 수정</h3>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={() => setOrganizationUnitEditor(null)}
+                    aria-label="닫기"
+                  >
+                    ×
+                  </button>
+                </div>
+                <label>
+                  {organizationUnitEditor.unitLabel}명
+                  <input
+                    value={organizationUnitEditor.name}
+                    autoFocus
+                    onChange={(event) =>
+                      setOrganizationUnitEditor({
+                        ...organizationUnitEditor,
+                        name: event.target.value,
+                      })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        handleUpdateOrganizationUnitName()
+                      }
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleUpdateOrganizationUnitName}
+                >
+                  <Save size={18} />
+                  저장
+                </button>
+              </section>
+            </div>
+          )}
           {organizationDivisions.length === 0 ? (
             <p className="empty-state">등록된 조직이 없습니다.</p>
           ) : (
@@ -5565,6 +5850,7 @@ function App() {
                     { role: 'CTOㆍ이사', name: '백상민' },
                     { role: 'CSOㆍ전무이사', name: '정의민' },
                     { role: 'CIOㆍ이사', name: '박도형' },
+                    { role: 'CFO', name: '박진수' },
                   ].map((executive) => (
                     <div className="org-node executive-node" key={executive.role}>
                       <span>{executive.role}</span>
@@ -6266,6 +6552,7 @@ function App() {
               <div className="history-head">
                 <span>근무일</span>
                 <span>일일 근무시간</span>
+                <span>이동시간</span>
                 <span>연장근로</span>
                 <span>야간근로</span>
                 <span>휴일근로</span>
@@ -6286,6 +6573,7 @@ function App() {
                         </span>
                       </div>
                       <span>{formatMinutes(holiday.paidMinutes)}</span>
+                      <span>0분</span>
                       <span>0분</span>
                       <span>0분</span>
                       <span>유급휴일 · {holiday.name}</span>
@@ -6344,6 +6632,7 @@ function App() {
                         getLoggedWorkMinutes(log) + (log.leave_minutes || 0),
                       )}
                     </span>
+                    <span>{formatMinutes(log.commute_minutes || 0)}</span>
                     <span>{formatMinutes(log.overtime_minutes)}</span>
                     <span>{formatMinutes(log.night_minutes)}</span>
                     <span>
