@@ -1846,6 +1846,7 @@ function App() {
     sortOrganizationUsers(
       organizationChartUsers.filter(
         (user) =>
+          user.id !== division.head_user_id &&
           user.organization_division_id === division.id &&
           !user.organization_team_id,
       ),
@@ -1854,13 +1855,20 @@ function App() {
   const getTeamUsers = (team: OrganizationTeam) =>
     sortOrganizationUsers(
       organizationChartUsers.filter(
-        (user) => user.organization_team_id === team.id && !user.organization_part_id,
+        (user) =>
+          user.id !== team.head_user_id &&
+          user.organization_team_id === team.id &&
+          !user.organization_part_id,
       ),
       team.head_user_id,
     )
   const getPartUsers = (part: OrganizationPart) =>
     sortOrganizationUsers(
-      organizationChartUsers.filter((user) => user.organization_part_id === part.id),
+      organizationChartUsers.filter(
+        (user) =>
+          user.id !== part.head_user_id &&
+          user.organization_part_id === part.id,
+      ),
       part.head_user_id,
     )
   const unassignedOrganizationUsers = sortOrganizationUsers(
@@ -3090,6 +3098,71 @@ function App() {
       return
     }
 
+    let organizationUpdate: {
+      organization_division_id: string
+      organization_team_id: string | null
+      organization_part_id: string | null
+    } | null = null
+
+    if (headUserId) {
+      if (tableName === 'organization_divisions') {
+        organizationUpdate = {
+          organization_division_id: id,
+          organization_team_id: null,
+          organization_part_id: null,
+        }
+      } else if (tableName === 'organization_teams') {
+        const team = organizationTeams.find((item) => item.id === id)
+
+        if (!team) {
+          setSettingsMessage('팀 정보를 확인할 수 없습니다.')
+          return
+        }
+
+        organizationUpdate = {
+          organization_division_id: team.division_id,
+          organization_team_id: team.id,
+          organization_part_id: null,
+        }
+      } else {
+        const part = organizationParts.find((item) => item.id === id)
+        const team = part
+          ? organizationTeams.find((item) => item.id === part.team_id)
+          : null
+
+        if (!part || !team) {
+          setSettingsMessage('파트 정보를 확인할 수 없습니다.')
+          return
+        }
+
+        organizationUpdate = {
+          organization_division_id: team.division_id,
+          organization_team_id: team.id,
+          organization_part_id: part.id,
+        }
+      }
+    }
+
+    let updatedHeadUser: AdminUser | null = null
+
+    if (headUserId && organizationUpdate) {
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .update(organizationUpdate)
+        .eq('id', headUserId)
+        .select(profileSelect)
+        .maybeSingle()
+
+      if (profileError || !data) {
+        setSettingsMessage(
+          profileError?.message ?? '조직장의 소속을 변경하지 못했습니다.',
+        )
+        return
+      }
+
+      updatedHeadUser = data as AdminUser
+    }
+
     const { error } = await supabase
       .from(tableName)
       .update({ head_user_id: headUserId || null })
@@ -3101,8 +3174,37 @@ function App() {
     }
 
     await loadOrganizationUnits()
+    if (updatedHeadUser) {
+      setAdminUsers((currentUsers) =>
+        currentUsers.map((user) =>
+          user.id === updatedHeadUser.id ? updatedHeadUser : user,
+        ),
+      )
+      setAdminUserOrgDrafts((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts }
+        delete nextDrafts[updatedHeadUser.id]
+        return nextDrafts
+      })
+      if (profile?.id === updatedHeadUser.id) {
+        setProfile(updatedHeadUser)
+        applyProfileDefaults(updatedHeadUser)
+      }
+      if (selectedAdminUser?.id === updatedHeadUser.id) {
+        setSelectedAdminUser(updatedHeadUser)
+      }
+      if (organizationUserEditor?.id === updatedHeadUser.id) {
+        setOrganizationUserEditor(null)
+      }
+      if (adminUserEditor?.id === updatedHeadUser.id) {
+        setAdminUserEditor(null)
+      }
+    }
     setOrganizationHeadEditor(null)
-    setToastMessage('조직장을 저장했습니다.')
+    setToastMessage(
+      updatedHeadUser
+        ? '조직장 지정과 소속 이동을 저장했습니다.'
+        : '조직장 지정을 해제했습니다.',
+    )
   }
 
   async function handleSaveAdminUserOrganization(targetUser: AdminUser) {
@@ -5850,7 +5952,7 @@ function App() {
                     { role: 'CTOㆍ이사', name: '백상민' },
                     { role: 'CSOㆍ전무이사', name: '정의민' },
                     { role: 'CIOㆍ이사', name: '박도형' },
-                    { role: 'CFO', name: '박진수' },
+                    { role: 'CFOㆍ이사', name: '박진수' },
                   ].map((executive) => (
                     <div className="org-node executive-node" key={executive.role}>
                       <span>{executive.role}</span>
