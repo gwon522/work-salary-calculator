@@ -1739,6 +1739,7 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-items: stretch;
 }
 
 .time-entry-card {
@@ -1804,7 +1805,6 @@ select:focus {
 }
 
 .commute-duration {
-  margin-left: auto;
   background: #f6e7e2;
   color: #a7472f;
 }
@@ -1850,6 +1850,15 @@ select:focus {
   color: #7a8581;
   font-size: 10px;
   font-weight: 900;
+}
+
+.copy-time-row > .duration-pill {
+  color: #0f5f52;
+  font-size: 11px;
+}
+
+.copy-time-row > .commute-duration {
+  color: #a7472f;
 }
 
 .copy-time-row code {

@@ -6478,9 +6478,6 @@ function App() {
                     <strong>근무시간</strong>
                     <small>출근부터 퇴근까지</small>
                   </div>
-                  <span className="duration-pill">
-                    {formatMinutes(grossWorkMinutes)}
-                  </span>
                 </div>
                 <div className="time-range-controls">
                   <TimeBox
@@ -6501,8 +6498,8 @@ function App() {
                   )}
                 </div>
                 <div className="copy-time-row">
-                  <span>
-                    {shouldCopyFullWorkRange ? '근무시간 복사' : '연장근로 복사'}
+                  <span className="duration-pill">
+                    {formatMinutes(grossWorkMinutes)}
                   </span>
                   <code>{workTimeCopyText}</code>
                   <button
@@ -6527,22 +6524,21 @@ function App() {
                 <div className="time-card-header">
                   <div>
                     <strong>이동시간</strong>
-                    <small>실근로에서 차감</small>
+                    <label className="switch-check">
+                      <input
+                        type="checkbox"
+                        checked={!form.noCommute}
+                        onChange={(event) =>
+                          setForm({ ...form, noCommute: !event.target.checked })
+                        }
+                        disabled={form.leaveType === 'full'}
+                      />
+                      <span className="switch-track" aria-hidden="true">
+                        <span />
+                      </span>
+                      <span>{form.noCommute ? '차감 안 함' : '차감 적용'}</span>
+                    </label>
                   </div>
-                  <label className="switch-check">
-                    <input
-                      type="checkbox"
-                      checked={!form.noCommute}
-                      onChange={(event) =>
-                        setForm({ ...form, noCommute: !event.target.checked })
-                      }
-                      disabled={form.leaveType === 'full'}
-                    />
-                    <span className="switch-track" aria-hidden="true">
-                      <span />
-                    </span>
-                    <span>{form.noCommute ? '차감 안 함' : '차감 적용'}</span>
-                  </label>
                 </div>
                 <div className="time-range-controls">
                   <TimeBox
@@ -6563,12 +6559,11 @@ function App() {
                   {isNextDayCommuteEnd && (
                     <span className="next-day-chip">다음날</span>
                   )}
+                </div>
+                <div className="copy-time-row">
                   <span className="duration-pill commute-duration">
                     −{formatMinutes(commuteMinutes)}
                   </span>
-                </div>
-                <div className="copy-time-row">
-                  <span>이동시간 복사</span>
                   <code>{commuteTimeCopyText}</code>
                   <button
                     type="button"
