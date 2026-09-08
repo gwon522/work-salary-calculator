@@ -489,6 +489,14 @@ select:focus {
   font-size: 13px;
 }
 
+.admin-user-toolbar-actions .work-log-team-select {
+  min-width: 168px;
+  border-color: #b9d2ca;
+  background-color: #f4faf7;
+  color: #164e45;
+  font-weight: 800;
+}
+
 .admin-user-table {
   width: 100%;
   min-width: 760px;
@@ -753,6 +761,45 @@ select:focus {
   color: #25332f;
   font-size: 13px;
   font-weight: 900;
+}
+
+.admin-login-id-field {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #cfd8d4;
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.admin-login-id-field:focus-within {
+  border-color: #145a50;
+  outline: 3px solid rgb(20 90 80 / 15%);
+}
+
+.admin-login-id-field input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.admin-login-id-field input:focus {
+  outline: none;
+}
+
+.admin-login-id-field span {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid #dce4e1;
+  background: #f1f6f4;
+  color: #52625d;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .admin-create-user-grid button {

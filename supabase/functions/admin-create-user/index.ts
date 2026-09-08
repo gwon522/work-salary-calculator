@@ -7,8 +7,7 @@ const corsHeaders = {
 }
 
 type CreateUserPayload = {
-  email?: string
-  password?: string
+  loginId?: string
   name?: string
   position?: string
   organizationDivisionId?: string | null
@@ -69,21 +68,19 @@ Deno.serve(async (request) => {
     }
 
     const payload = (await request.json()) as CreateUserPayload
-    const email = payload.email?.trim().toLowerCase()
-    const password = payload.password?.trim() || email
+    const loginId = payload.loginId?.trim().toLowerCase()
+    const email = loginId ? `${loginId}@sttd.co.kr` : ''
+    const password = email
     const name = payload.name?.trim()
     const position = payload.position?.trim() || '사원'
 
-    if (!email || !password || !name) {
-      return jsonResponse(
-        { message: '이름과 메일을 입력해주세요.' },
-        400,
-      )
+    if (!loginId || !name) {
+      return jsonResponse({ message: '이름과 아이디를 입력해주세요.' }, 400)
     }
 
-    if (password.length < 6) {
+    if (!/^[a-z0-9._-]+$/.test(loginId)) {
       return jsonResponse(
-        { message: '임시 비밀번호는 6자 이상으로 입력해주세요.' },
+        { message: '아이디는 영문, 숫자, 마침표, 밑줄, 하이픈만 사용할 수 있습니다.' },
         400,
       )
     }
@@ -95,6 +92,7 @@ Deno.serve(async (request) => {
         email_confirm: true,
         user_metadata: {
           name,
+          must_change_password: true,
         },
       })
 

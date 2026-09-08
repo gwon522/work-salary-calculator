@@ -207,7 +207,7 @@ type AdminCreateUserForm = {
   teamId: string
   partId: string
   name: string
-  email: string
+  loginId: string
   position: string
 }
 
@@ -291,7 +291,7 @@ const initialAdminCreateUserForm: AdminCreateUserForm = {
   teamId: '',
   partId: '',
   name: '',
-  email: '',
+  loginId: '',
   position: '사원',
 }
 
@@ -1456,6 +1456,7 @@ function App() {
   const [selectedWorkLogUserIds, setSelectedWorkLogUserIds] = useState<string[]>(
     [],
   )
+  const [workLogDownloadTeamId, setWorkLogDownloadTeamId] = useState('')
   const [workLogDownloadYear, setWorkLogDownloadYear] = useState(currentYear)
   const [workLogDownloadMonth, setWorkLogDownloadMonth] = useState(currentMonth)
   const [selectedAdminUser, setSelectedAdminUser] = useState<AdminUser | null>(
@@ -1532,6 +1533,8 @@ function App() {
     isSubstitute: false,
   })
   const isAdmin = profile?.role === 'admin'
+  const requiresInitialPasswordChange =
+    session?.user.user_metadata?.must_change_password === true
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -1878,11 +1881,24 @@ function App() {
       return matchesDivision && matchesTeam && matchesPart && matchesName
     }),
   )
+  const selectedWorkLogDownloadTeam = organizationTeams.find(
+    (team) => team.id === workLogDownloadTeamId,
+  )
+  const teamWorkLogDownloadUsers = selectedWorkLogDownloadTeam
+    ? sortOrganizationUsers(
+        adminUsers.filter(
+          (user) => user.organization_team_id === selectedWorkLogDownloadTeam.id,
+        ),
+      )
+    : []
+  const workLogDownloadUserIds = selectedWorkLogDownloadTeam
+    ? teamWorkLogDownloadUsers.map((user) => user.id)
+    : selectedWorkLogUserIds
   const filteredAdminUserIds = filteredAdminUsers.map((user) => user.id)
   const isAllFilteredUsersSelected =
     filteredAdminUserIds.length > 0 &&
     filteredAdminUserIds.every((userId) =>
-      selectedWorkLogUserIds.includes(userId),
+      workLogDownloadUserIds.includes(userId),
     )
   const organizationChartUsers = isAdmin
     ? adminUsers
@@ -2254,11 +2270,18 @@ function App() {
     event.preventDefault()
     setSettingsMessage('')
 
-    const normalizedEmail = adminCreateUserForm.email.trim().toLowerCase()
+    const normalizedLoginId = adminCreateUserForm.loginId.trim().toLowerCase()
     const trimmedName = adminCreateUserForm.name.trim()
 
-    if (!trimmedName || !normalizedEmail) {
-      setSettingsMessage('이름과 메일을 입력해주세요.')
+    if (!trimmedName || !normalizedLoginId) {
+      setSettingsMessage('이름과 아이디를 입력해주세요.')
+      return
+    }
+
+    if (!/^[a-z0-9._-]+$/.test(normalizedLoginId)) {
+      setSettingsMessage(
+        '아이디는 영문, 숫자, 마침표, 밑줄, 하이픈만 사용할 수 있습니다.',
+      )
       return
     }
 
@@ -2267,8 +2290,7 @@ function App() {
       message?: string
     }>('admin-create-user', {
       body: {
-        email: normalizedEmail,
-        password: normalizedEmail,
+        loginId: normalizedLoginId,
         name: trimmedName,
         position: adminCreateUserForm.position,
         organizationDivisionId: adminCreateUserForm.divisionId || null,
@@ -2289,7 +2311,7 @@ function App() {
     setAdminCreateUserForm(initialAdminCreateUserForm)
     setIsAdminCreateUserModalOpen(false)
     setSettingsMessage(
-      `${data.user.name} 계정을 생성했습니다. 메일 인증 없이 바로 로그인할 수 있습니다.`,
+      `${data.user.name} 계정을 생성했습니다. 로그인 아이디와 초기 비밀번호는 ${data.user.email}입니다.`,
     )
     await loadAdminUsers()
   }
@@ -2611,8 +2633,24 @@ function App() {
       return
     }
 
+    if (
+      requiresInitialPasswordChange &&
+      newPassword === session?.user.email
+    ) {
+      setAuthMessage('초기 비밀번호와 다른 비밀번호를 입력해주세요.')
+      return
+    }
+
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
+      ...(requiresInitialPasswordChange
+        ? {
+            data: {
+              ...session?.user.user_metadata,
+              must_change_password: false,
+            },
+          }
+        : {}),
     })
 
     if (error) {
@@ -3465,21 +3503,62 @@ function App() {
   }
 
   function toggleWorkLogUserSelection(userId: string) {
-    setSelectedWorkLogUserIds((currentIds) =>
-      currentIds.includes(userId)
-        ? currentIds.filter((currentId) => currentId !== userId)
-        : [...currentIds, userId],
-    )
+    const currentDownloadUserIds = workLogDownloadUserIds
+
+    setWorkLogDownloadTeamId('')
+    setSelectedWorkLogUserIds((currentIds) => {
+      const baseIds = selectedWorkLogDownloadTeam
+        ? currentDownloadUserIds
+        : currentIds
+
+      return baseIds.includes(userId)
+        ? baseIds.filter((currentId) => currentId !== userId)
+        : [...baseIds, userId]
+    })
   }
 
   function toggleAllFilteredWorkLogUsers() {
+    const currentDownloadUserIds = workLogDownloadUserIds
+
+    setWorkLogDownloadTeamId('')
     setSelectedWorkLogUserIds((currentIds) => {
+      const baseIds = selectedWorkLogDownloadTeam
+        ? currentDownloadUserIds
+        : currentIds
+
       if (isAllFilteredUsersSelected) {
-        return currentIds.filter((userId) => !filteredAdminUserIds.includes(userId))
+        return baseIds.filter(
+          (userId) => !filteredAdminUserIds.includes(userId),
+        )
       }
 
-      return Array.from(new Set([...currentIds, ...filteredAdminUserIds]))
+      return Array.from(new Set([...baseIds, ...filteredAdminUserIds]))
     })
+  }
+
+  function handleWorkLogDownloadTeamChange(teamId: string) {
+    setSettingsMessage('')
+    setWorkLogDownloadTeamId(teamId)
+
+    if (!teamId) {
+      return
+    }
+
+    const team = organizationTeams.find((item) => item.id === teamId)
+
+    if (team) {
+      setSelectedWorkLogUserIds(
+        adminUsers
+          .filter((user) => user.organization_team_id === team.id)
+          .map((user) => user.id),
+      )
+      setAdminUserFilters({
+        divisionId: team.division_id,
+        teamId: team.id,
+        partId: '',
+        name: '',
+      })
+    }
   }
 
   async function downloadWorkLogWorkbook(
@@ -3688,7 +3767,7 @@ function App() {
       return
     }
 
-    if (selectedWorkLogUserIds.length === 0) {
+    if (workLogDownloadUserIds.length === 0) {
       setSettingsMessage('근무일지를 다운로드할 사용자를 선택해주세요.')
       return
     }
@@ -3701,7 +3780,7 @@ function App() {
       const { data, error } = await supabase
         .from('work_logs')
         .select('*')
-        .in('user_id', selectedWorkLogUserIds)
+        .in('user_id', workLogDownloadUserIds)
         .gte('work_date', start)
         .lte('work_date', end)
         .order('work_date', { ascending: true })
@@ -3717,15 +3796,18 @@ function App() {
       }
 
       const selectedUsers = sortOrganizationUsers(
-        adminUsers.filter((user) => selectedWorkLogUserIds.includes(user.id)),
+        adminUsers.filter((user) => workLogDownloadUserIds.includes(user.id)),
       )
+      const fileNameTarget = selectedWorkLogDownloadTeam?.name
+        .replace(/[\\/:*?"<>|]/g, '')
+        .trim()
 
       await downloadWorkLogWorkbook(
         selectedUsers,
         (data ?? []) as WorkLog[],
         workLogDownloadYear,
         workLogDownloadMonth,
-        `근무일지_${workLogDownloadYear}-${workLogDownloadMonth}.xlsx`,
+        `근무일지_${fileNameTarget ? `${fileNameTarget}_` : ''}${workLogDownloadYear}-${workLogDownloadMonth}.xlsx`,
       )
     } catch (downloadError) {
       const message =
@@ -3809,11 +3891,16 @@ function App() {
     await supabase.auth.signOut()
   }
 
-  if (authMode === 'reset') {
+  if (authMode === 'reset' || requiresInitialPasswordChange) {
     return (
       <main className="auth-shell">
         <section className="auth-panel">
           <AuthHeader />
+          {requiresInitialPasswordChange && (
+            <p className="status-message">
+              최초 로그인입니다. 계속하려면 새 비밀번호를 설정해주세요.
+            </p>
+          )}
           <form className="stack-form" onSubmit={handleUpdatePassword}>
             <label>
               새 비밀번호
@@ -3833,7 +3920,9 @@ function App() {
             </label>
             <button type="submit" className="primary-button">
               <KeyRound size={18} />
-              비밀번호 변경
+              {requiresInitialPasswordChange
+                ? '새 비밀번호 설정'
+                : '비밀번호 변경'}
             </button>
           </form>
           {authMessage && <p className="message">{authMessage}</p>}
@@ -4427,9 +4516,45 @@ function App() {
             <div className="admin-user-toolbar">
               <span>
                 표시 사용자 <strong>{filteredAdminUsers.length}</strong>명 · 선택{' '}
-                <strong>{selectedWorkLogUserIds.length}</strong>명
+                <strong>{workLogDownloadUserIds.length}</strong>명
+                {selectedWorkLogDownloadTeam && (
+                  <> · {selectedWorkLogDownloadTeam.name} 전체</>
+                )}
               </span>
               <div className="admin-user-toolbar-actions">
+                <select
+                  className="work-log-team-select"
+                  value={workLogDownloadTeamId}
+                  onChange={(event) =>
+                    handleWorkLogDownloadTeamChange(event.target.value)
+                  }
+                  aria-label="근무일지 다운로드 팀"
+                >
+                  <option value="">개별 사용자 선택</option>
+                  {organizationDivisions.map((division) => {
+                    const divisionTeams = getTeamsForDivision(division.id)
+
+                    if (divisionTeams.length === 0) {
+                      return null
+                    }
+
+                    return (
+                      <optgroup key={division.id} label={division.name}>
+                        {divisionTeams.map((team) => {
+                          const memberCount = adminUsers.filter(
+                            (user) => user.organization_team_id === team.id,
+                          ).length
+
+                          return (
+                            <option key={team.id} value={team.id}>
+                              {team.name} · {memberCount}명
+                            </option>
+                          )
+                        })}
+                      </optgroup>
+                    )
+                  })}
+                </select>
                 <select
                   value={workLogDownloadYear}
                   onChange={(event) => setWorkLogDownloadYear(event.target.value)}
@@ -4469,7 +4594,9 @@ function App() {
                   onClick={handleDownloadWorkLogs}
                 >
                   <Download size={18} />
-                  근무일지 다운로드
+                  {selectedWorkLogDownloadTeam
+                    ? '팀 근무일지 다운로드'
+                    : '근무일지 다운로드'}
                 </button>
                 <button
                   type="button"
@@ -4523,18 +4650,22 @@ function App() {
                         />
                       </label>
                       <label>
-                        메일주소
-                        <input
-                          type="email"
-                          value={adminCreateUserForm.email}
-                          onChange={(event) =>
-                            setAdminCreateUserForm({
-                              ...adminCreateUserForm,
-                              email: event.target.value,
-                            })
-                          }
-                          placeholder="name@company.com"
-                        />
+                        아이디
+                        <div className="admin-login-id-field">
+                          <input
+                            value={adminCreateUserForm.loginId}
+                            onChange={(event) =>
+                              setAdminCreateUserForm({
+                                ...adminCreateUserForm,
+                                loginId: event.target.value,
+                              })
+                            }
+                            placeholder="사용할 아이디"
+                            autoCapitalize="none"
+                            autoComplete="off"
+                          />
+                          <span>@sttd.co.kr</span>
+                        </div>
                       </label>
                       <label>
                         직급
@@ -4657,7 +4788,7 @@ function App() {
                         <td className="checkbox-cell">
                           <input
                             type="checkbox"
-                            checked={selectedWorkLogUserIds.includes(user.id)}
+                            checked={workLogDownloadUserIds.includes(user.id)}
                             onChange={() => toggleWorkLogUserSelection(user.id)}
                             onClick={(event) => event.stopPropagation()}
                             aria-label={`${user.name} 근무일지 선택`}
