@@ -6727,10 +6727,19 @@ function App() {
             </div>
 
             <div className="modern-field overtime-reason-field">
-              <div className="overtime-reason-header">
-                <span className="field-label" id="overtime-reason-label">
-                  연장근무 사유 <small>선택 입력</small>
-                </span>
+              <span className="field-label" id="overtime-reason-label">
+                연장근무 사유 <small>선택 입력</small>
+              </span>
+              <div className="overtime-reason-control">
+                <textarea
+                  aria-labelledby="overtime-reason-label"
+                  value={form.overtimeReason}
+                  onChange={(event) =>
+                    setForm({ ...form, overtimeReason: event.target.value })
+                  }
+                  placeholder="연장근무가 발생한 경우 사유를 입력하세요."
+                  rows={2}
+                />
                 <button
                   type="button"
                   className="copy-time-button copy-reason-button"
@@ -6741,15 +6750,6 @@ function App() {
                   복사
                 </button>
               </div>
-              <textarea
-                aria-labelledby="overtime-reason-label"
-                value={form.overtimeReason}
-                onChange={(event) =>
-                  setForm({ ...form, overtimeReason: event.target.value })
-                }
-                placeholder="연장근무가 발생한 경우 사유를 입력하세요."
-                rows={2}
-              />
             </div>
           </div>
 

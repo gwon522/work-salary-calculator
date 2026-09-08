@@ -2011,16 +2011,26 @@ select:focus {
   background: #fbfcfc;
 }
 
-.overtime-reason-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.overtime-reason-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.overtime-reason-control textarea {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .copy-reason-button {
-  min-height: 30px;
-  flex: 0 0 auto;
+  width: 84px;
+  min-height: 78px;
+  border-radius: 12px;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
 }
 
 .input-panel .form-actions {
