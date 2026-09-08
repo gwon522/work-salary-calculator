@@ -2733,6 +2733,21 @@ function App() {
     }
   }
 
+  async function handleCopyOvertimeReason() {
+    const overtimeReason = form.overtimeReason.trim()
+
+    if (!overtimeReason) {
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(overtimeReason)
+      setToastMessage('연장근무 사유를 복사했습니다.')
+    } catch {
+      setSaveMessage('연장근무 사유를 복사하지 못했습니다. 다시 시도해주세요.')
+    }
+  }
+
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaveMessage('')
@@ -6711,11 +6726,23 @@ function App() {
               </section>
             </div>
 
-            <label className="modern-field overtime-reason-field">
-              <span className="field-label">
-                연장근무 사유 <small>선택 입력</small>
-              </span>
+            <div className="modern-field overtime-reason-field">
+              <div className="overtime-reason-header">
+                <span className="field-label" id="overtime-reason-label">
+                  연장근무 사유 <small>선택 입력</small>
+                </span>
+                <button
+                  type="button"
+                  className="copy-time-button copy-reason-button"
+                  disabled={!form.overtimeReason.trim()}
+                  onClick={handleCopyOvertimeReason}
+                >
+                  <Copy size={14} />
+                  복사
+                </button>
+              </div>
               <textarea
+                aria-labelledby="overtime-reason-label"
                 value={form.overtimeReason}
                 onChange={(event) =>
                   setForm({ ...form, overtimeReason: event.target.value })
@@ -6723,7 +6750,7 @@ function App() {
                 placeholder="연장근무가 발생한 경우 사유를 입력하세요."
                 rows={2}
               />
-            </label>
+            </div>
           </div>
 
           {editingWorkLog && (

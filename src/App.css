@@ -2011,6 +2011,18 @@ select:focus {
   background: #fbfcfc;
 }
 
+.overtime-reason-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.copy-reason-button {
+  min-height: 30px;
+  flex: 0 0 auto;
+}
+
 .input-panel .form-actions {
   padding-top: 2px;
 }
