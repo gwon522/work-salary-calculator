@@ -1298,6 +1298,12 @@ function getCalendarCommuteCopyText(log: WorkLog) {
   )}`
 }
 
+function getOvertimeApprovalTitle(workDate: string) {
+  const [, month, day] = workDate.split('-').map(Number)
+
+  return `[STL-KR] 연장근무 승인 요청서 (근무일 : ${month}/${day})`
+}
+
 function getCalendarPayClass(totalPay: number) {
   if (totalPay >= 400_000) {
     return 'pay-tier-top'
@@ -6762,16 +6768,32 @@ function App() {
                     >
                       <div className="calendar-log-popover-header">
                         <strong>{formatWorkDateWithWeekday(log.work_date)}</strong>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setSelectedCalendarLogId(null)
-                          }}
-                          aria-label="근무 상세 닫기"
-                        >
-                          <X size={14} />
-                        </button>
+                        <div className="calendar-log-popover-header-actions">
+                          <button
+                            type="button"
+                            className="calendar-log-copy-icon"
+                            onClick={() =>
+                              handleCopyTimeRange(
+                                getOvertimeApprovalTitle(log.work_date),
+                                '승인 요청서 제목',
+                              )
+                            }
+                            aria-label="승인 요청서 제목 복사"
+                            title="승인 요청서 제목 복사"
+                          >
+                            <Copy size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setSelectedCalendarLogId(null)
+                            }}
+                            aria-label="근무 상세 닫기"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
                       </div>
                       <dl>
                         <div>
@@ -6781,6 +6803,30 @@ function App() {
                         <div>
                           <dt>실근로</dt>
                           <dd>{formatMinutes(getLoggedWorkMinutes(log))}</dd>
+                        </div>
+                        <div>
+                          <dt>연장근로</dt>
+                          <dd className="calendar-log-copy-value">
+                            <span>{formatMinutes(log.overtime_minutes)}</span>
+                            {calendarOvertimeCopyText && (
+                              <code>{calendarOvertimeCopyText}</code>
+                            )}
+                            <button
+                              type="button"
+                              className="calendar-log-copy-icon"
+                              disabled={!hasCalendarOvertimeToCopy}
+                              onClick={() =>
+                                handleCopyTimeRange(
+                                  calendarOvertimeCopyText,
+                                  '연장근무시간',
+                                )
+                              }
+                              aria-label="연장근무시간 복사"
+                              title="연장근무시간 복사"
+                            >
+                              <Copy size={13} />
+                            </button>
+                          </dd>
                         </div>
                         <div>
                           <dt>이동시간 차감</dt>
@@ -6805,30 +6851,6 @@ function App() {
                               }
                               aria-label="이동시간 복사"
                               title="이동시간 복사"
-                            >
-                              <Copy size={13} />
-                            </button>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>연장근로</dt>
-                          <dd className="calendar-log-copy-value">
-                            <span>{formatMinutes(log.overtime_minutes)}</span>
-                            {calendarOvertimeCopyText && (
-                              <code>{calendarOvertimeCopyText}</code>
-                            )}
-                            <button
-                              type="button"
-                              className="calendar-log-copy-icon"
-                              disabled={!hasCalendarOvertimeToCopy}
-                              onClick={() =>
-                                handleCopyTimeRange(
-                                  calendarOvertimeCopyText,
-                                  '연장근무시간',
-                                )
-                              }
-                              aria-label="연장근무시간 복사"
-                              title="연장근무시간 복사"
                             >
                               <Copy size={13} />
                             </button>

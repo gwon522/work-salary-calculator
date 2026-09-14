@@ -3256,6 +3256,12 @@ select:focus {
   font-size: 13px;
 }
 
+.calendar-log-popover-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .calendar-log-popover-header button {
   width: 28px;
   height: 28px;
@@ -3268,6 +3274,16 @@ select:focus {
   background: #edf4f1;
   color: #52625d;
   cursor: pointer;
+}
+
+.calendar-log-popover-header .calendar-log-copy-icon {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  flex-basis: 28px;
+  border: 1px solid #cee0da;
+  background: #eef7f4;
+  color: #176e60;
 }
 
 .calendar-log-popover dl {
