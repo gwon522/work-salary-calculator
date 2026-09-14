@@ -3300,6 +3300,60 @@ select:focus {
   text-align: right;
 }
 
+.calendar-log-copy-value {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.calendar-log-copy-value code {
+  overflow: hidden;
+  color: #176e60;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-log-copy-icon {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  display: grid;
+  flex: 0 0 26px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #cee0da;
+  border-radius: 7px;
+  background: #eef7f4;
+  color: #176e60;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.calendar-log-copy-icon:hover:not(:disabled),
+.calendar-log-copy-icon:focus-visible {
+  border-color: #72ad9f;
+  background: #dff2ec;
+  color: #0f5e50;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.calendar-log-copy-icon:disabled {
+  border-color: #e0e6e3;
+  background: #f3f5f4;
+  color: #a9b1ae;
+  cursor: not-allowed;
+}
+
 .calendar-log-reason {
   display: grid;
   gap: 5px;
@@ -3308,7 +3362,14 @@ select:focus {
   background: #f3f7f5;
 }
 
-.calendar-log-reason span {
+.calendar-log-reason-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-log-reason-header span {
   color: #66746f;
   font-size: 10px;
   font-weight: 900;

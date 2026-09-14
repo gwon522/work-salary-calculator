@@ -1264,12 +1264,38 @@ function formatCalendarTime(log: WorkLog, value: string) {
     0,
     Math.round((target.getTime() - workStart.getTime()) / 60000),
   )
-  const startHour = workStart.getHours()
-  const totalMinutes = startHour * 60 + minutes
+  const startMinutes = workStart.getHours() * 60 + workStart.getMinutes()
+  const totalMinutes = startMinutes + minutes
   const hour = Math.floor(totalMinutes / 60)
   const minute = totalMinutes % 60
 
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function getCalendarCommuteCopyText(log: WorkLog) {
+  if (log.commute_minutes <= 0) {
+    return ''
+  }
+
+  if (log.remote_clock_in && log.remote_clock_out) {
+    return `${formatCalendarTime(log, log.remote_clock_in)} ~ ${formatCalendarTime(
+      log,
+      log.remote_clock_out,
+    )}`
+  }
+
+  const commuteEndMinutes = getWorkLogClockMinutes(
+    log.work_date,
+    log.office_clock_out,
+  )
+  const commuteStartMinutes = Math.max(
+    0,
+    commuteEndMinutes - log.commute_minutes,
+  )
+
+  return `${formatClockMinutes(commuteStartMinutes)} ~ ${formatClockMinutes(
+    commuteEndMinutes,
+  )}`
 }
 
 function getCalendarPayClass(totalPay: number) {
@@ -6630,6 +6656,27 @@ function App() {
                       log.office_clock_in,
                     )} ~ ${formatCalendarTime(log, log.office_clock_out)}`
                 : ''
+              const isSaturdayOffday =
+                day.weekday === 6 && settingsForm.saturdayPolicy === 'offday'
+              const shouldCopyFullCalendarWorkRange =
+                isHolidayDate || isSaturdayOffday
+              const hasCalendarOvertimeToCopy = Boolean(
+                log &&
+                  (shouldCopyFullCalendarWorkRange
+                    ? getLoggedWorkMinutes(log) > 0
+                    : log.overtime_minutes > 0),
+              )
+              const calendarOvertimeCopyText =
+                log && hasCalendarOvertimeToCopy
+                  ? `${
+                      shouldCopyFullCalendarWorkRange
+                        ? formatCalendarTime(log, log.office_clock_in)
+                        : settingsForm.defaultRegularEnd
+                    } ~ ${formatCalendarTime(log, log.office_clock_out)}`
+                  : ''
+              const calendarCommuteCopyText = log
+                ? getCalendarCommuteCopyText(log)
+                : ''
 
               return (
                 <div
@@ -6737,19 +6784,76 @@ function App() {
                         </div>
                         <div>
                           <dt>이동시간 차감</dt>
-                          <dd>
-                            {log.commute_minutes > 0
-                              ? `−${formatMinutes(log.commute_minutes)}`
-                              : '없음'}
+                          <dd className="calendar-log-copy-value">
+                            <span>
+                              {log.commute_minutes > 0
+                                ? `−${formatMinutes(log.commute_minutes)}`
+                                : '없음'}
+                            </span>
+                            {calendarCommuteCopyText && (
+                              <code>{calendarCommuteCopyText}</code>
+                            )}
+                            <button
+                              type="button"
+                              className="calendar-log-copy-icon"
+                              disabled={!calendarCommuteCopyText}
+                              onClick={() =>
+                                handleCopyTimeRange(
+                                  calendarCommuteCopyText,
+                                  '이동시간',
+                                )
+                              }
+                              aria-label="이동시간 복사"
+                              title="이동시간 복사"
+                            >
+                              <Copy size={13} />
+                            </button>
                           </dd>
                         </div>
                         <div>
                           <dt>연장근로</dt>
-                          <dd>{formatMinutes(log.overtime_minutes)}</dd>
+                          <dd className="calendar-log-copy-value">
+                            <span>{formatMinutes(log.overtime_minutes)}</span>
+                            {calendarOvertimeCopyText && (
+                              <code>{calendarOvertimeCopyText}</code>
+                            )}
+                            <button
+                              type="button"
+                              className="calendar-log-copy-icon"
+                              disabled={!hasCalendarOvertimeToCopy}
+                              onClick={() =>
+                                handleCopyTimeRange(
+                                  calendarOvertimeCopyText,
+                                  '연장근무시간',
+                                )
+                              }
+                              aria-label="연장근무시간 복사"
+                              title="연장근무시간 복사"
+                            >
+                              <Copy size={13} />
+                            </button>
+                          </dd>
                         </div>
                       </dl>
                       <div className="calendar-log-reason">
-                        <span>연장근무 사유</span>
+                        <div className="calendar-log-reason-header">
+                          <span>연장근무 사유</span>
+                          <button
+                            type="button"
+                            className="calendar-log-copy-icon"
+                            disabled={!log.overtime_reason?.trim()}
+                            onClick={() =>
+                              handleCopyTimeRange(
+                                log.overtime_reason?.trim() ?? '',
+                                '연장근무 사유',
+                              )
+                            }
+                            aria-label="연장근무 사유 복사"
+                            title="연장근무 사유 복사"
+                          >
+                            <Copy size={13} />
+                          </button>
+                        </div>
                         <p>{log.overtime_reason?.trim() || '입력된 사유 없음'}</p>
                       </div>
                     </aside>
