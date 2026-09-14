@@ -582,6 +582,63 @@ select:focus {
   align-items: stretch;
 }
 
+.work-view-stage {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.work-view-stage .workbench,
+.work-view-stage .history-section {
+  max-width: none;
+}
+
+.work-view-stage .history-section {
+  margin: 0;
+}
+
+.work-view-panel-hidden {
+  display: none;
+}
+
+.work-view-switch {
+  position: absolute;
+  top: 50%;
+  right: -62px;
+  z-index: 12;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid #c9dcd6;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #145a50;
+  box-shadow: 0 12px 30px rgb(22 49 43 / 16%);
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.work-view-switch:hover,
+.work-view-switch:focus-visible {
+  border-color: #145a50;
+  background: #145a50;
+  color: #ffffff;
+  outline: none;
+  transform: translateY(-50%) scale(1.05);
+}
+
+.work-view-stage.is-history-view .work-view-switch {
+  top: 30px;
+  right: auto;
+  left: -62px;
+}
+
 .input-panel,
 .result-panel,
 .history-section,
@@ -2207,6 +2264,34 @@ select:focus {
   font-weight: 700;
 }
 
+.history-work-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 30px;
+}
+
+.history-work-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #74817d;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.history-work-legend span::before {
+  width: 3px;
+  height: 12px;
+  border-radius: 999px;
+  background: #16806c;
+  content: '';
+}
+
+.history-work-legend .weekend::before {
+  background: #d97706;
+}
+
 .month-picker {
   display: flex;
   align-items: center;
@@ -2493,6 +2578,7 @@ select:focus {
 }
 
 .log-row {
+  position: relative;
   min-height: 76px;
   padding: 14px 16px;
   border: 0;
@@ -2503,6 +2589,21 @@ select:focus {
   transition:
     background 0.16s ease,
     box-shadow 0.16s ease;
+}
+
+.log-row.has-extra-work::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: #16806c;
+  content: '';
+}
+
+.log-row.has-extra-work.weekend-work::before {
+  background: #d97706;
 }
 
 .log-row:last-child {
@@ -2631,6 +2732,7 @@ select:focus {
 }
 
 .calendar-day {
+  position: relative;
   min-height: 122px;
   display: flex;
   flex-direction: column;
@@ -2639,6 +2741,24 @@ select:focus {
   border: 1px solid #e1e8e5;
   border-radius: 8px;
   background: #fbfcfc;
+}
+
+.calendar-day.has-record {
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.calendar-day.has-record:hover,
+.calendar-day.has-record:focus-visible,
+.calendar-day.has-record.is-detail-open {
+  z-index: 10;
+  border-color: #79aa9d;
+  box-shadow: 0 10px 26px rgb(30 67 58 / 13%);
+  outline: none;
+  transform: translateY(-2px);
 }
 
 .calendar-day.blank {
@@ -2759,9 +2879,159 @@ select:focus {
   font-weight: 900;
 }
 
+.calendar-log-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  z-index: 20;
+  width: min(290px, calc(100vw - 64px));
+  padding: 14px;
+  transform: translateX(-50%);
+  border: 1px solid #c9dcd6;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 20px 52px rgb(24 49 43 / 22%);
+  color: #25312e;
+  cursor: default;
+}
+
+.calendar-log-popover::before {
+  position: absolute;
+  top: -7px;
+  left: calc(50% - 7px);
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  border-top: 1px solid #c9dcd6;
+  border-left: 1px solid #c9dcd6;
+  background: #ffffff;
+  content: '';
+}
+
+.working-calendar > .calendar-day:nth-child(7n) .calendar-log-popover {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.working-calendar
+  > .calendar-day:nth-child(7n)
+  .calendar-log-popover::before {
+  right: 24px;
+  left: auto;
+}
+
+.working-calendar > .calendar-day:nth-child(7n + 1) .calendar-log-popover {
+  right: auto;
+  left: 0;
+  transform: none;
+}
+
+.working-calendar
+  > .calendar-day:nth-child(7n + 1)
+  .calendar-log-popover::before {
+  left: 24px;
+}
+
+.calendar-log-popover-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e7ecea;
+}
+
+.calendar-log-popover-header strong {
+  color: #173f39;
+  font-size: 13px;
+}
+
+.calendar-log-popover-header button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #edf4f1;
+  color: #52625d;
+  cursor: pointer;
+}
+
+.calendar-log-popover dl {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.calendar-log-popover dl div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calendar-log-popover dt,
+.calendar-log-popover dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.calendar-log-popover dt {
+  color: #7a8581;
+  font-weight: 700;
+}
+
+.calendar-log-popover dd {
+  color: #25312e;
+  font-weight: 900;
+  text-align: right;
+}
+
+.calendar-log-reason {
+  display: grid;
+  gap: 5px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: #f3f7f5;
+}
+
+.calendar-log-reason span {
+  color: #66746f;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.calendar-log-reason p {
+  color: #25312e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .calendar-work-card small.pay-tier-top {
   color: #8b1e6b;
   font-weight: 900;
+}
+
+@media (max-width: 1320px) {
+  .work-view-switch,
+  .work-view-stage.is-history-view .work-view-switch {
+    top: -14px;
+    right: 14px;
+    left: auto;
+    transform: none;
+  }
+
+  .work-view-switch:hover,
+  .work-view-switch:focus-visible {
+    transform: scale(1.05);
+  }
 }
 
 @media (max-width: 860px) {
@@ -2898,6 +3168,31 @@ select:focus {
 
   .calendar-weekday,
   .calendar-day.blank {
+    display: none;
+  }
+
+  .work-view-switch,
+  .work-view-stage.is-history-view .work-view-switch {
+    position: fixed;
+    top: auto;
+    right: 18px;
+    bottom: 20px;
+    left: auto;
+  }
+
+  .calendar-log-popover,
+  .working-calendar > .calendar-day:nth-child(7n) .calendar-log-popover,
+  .working-calendar > .calendar-day:nth-child(7n + 1) .calendar-log-popover {
+    position: fixed;
+    top: auto;
+    right: 18px;
+    bottom: 18px;
+    left: 18px;
+    width: auto;
+    transform: none;
+  }
+
+  .calendar-log-popover::before {
     display: none;
   }
 }

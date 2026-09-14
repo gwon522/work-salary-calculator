@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Calculator,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
   Download,
@@ -1476,6 +1478,10 @@ function App() {
   const [activePage, setActivePage] = useState<
     'work' | 'calendar' | 'organization' | 'profile' | 'users' | 'system'
   >('work')
+  const [workView, setWorkView] = useState<'input' | 'history'>('input')
+  const [selectedCalendarLogId, setSelectedCalendarLogId] = useState<
+    string | null
+  >(null)
   const [selectedYear, setSelectedYear] = useState(currentYear)
   const [selectedMonth, setSelectedMonth] = useState(currentMonth)
   const [selectedHolidayName, setSelectedHolidayName] = useState<string | null>(
@@ -2841,6 +2847,7 @@ function App() {
     setSelectedHolidayName(null)
     setSaveMessage('')
     setForm(buildWorkFormFromLog(log))
+    setWorkView('input')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -4064,6 +4071,7 @@ function App() {
             className={activePage === 'work' ? 'nav-button active' : 'nav-button'}
             onClick={() => {
               setActivePage('work')
+              setWorkView('input')
               setIsUserMenuOpen(false)
               setIsAdminMenuOpen(false)
             }}
@@ -4078,6 +4086,7 @@ function App() {
             }
             onClick={() => {
               setActivePage('calendar')
+              setSelectedCalendarLogId(null)
               setIsUserMenuOpen(false)
               setIsAdminMenuOpen(false)
             }}
@@ -4844,6 +4853,7 @@ function App() {
                                 clearWorkLogEditState()
                                 setSelectedAdminUser(user)
                                 setActivePage('work')
+                                setWorkView('input')
                               }}
                             >
                               근무보기
@@ -6369,6 +6379,7 @@ function App() {
                 value={selectedYear}
                 onChange={(event) => {
                   clearWorkLogEditState()
+                  setSelectedCalendarLogId(null)
                   setSelectedYear(event.target.value)
                 }}
               >
@@ -6386,6 +6397,7 @@ function App() {
                 value={selectedMonth}
                 onChange={(event) => {
                   clearWorkLogEditState()
+                  setSelectedCalendarLogId(null)
                   setSelectedMonth(event.target.value)
                 }}
               >
@@ -6452,6 +6464,15 @@ function App() {
                   : day.weekday === 6
                     ? 'saturday'
                     : ''
+              const isLogDetailOpen = log?.id === selectedCalendarLogId
+              const calendarWorkTime = log
+                ? log.leave_type === 'full' && !hasLeaveWork
+                  ? getLeaveLabel(log.leave_type)
+                  : `${formatCalendarTime(
+                      log,
+                      log.office_clock_in,
+                    )} ~ ${formatCalendarTime(log, log.office_clock_out)}`
+                : ''
 
               return (
                 <div
@@ -6467,8 +6488,36 @@ function App() {
                         : paidHoliday
                           ? 'paid-holiday'
                           : ''
+                  } ${log ? 'has-record' : ''} ${
+                    isLogDetailOpen ? 'is-detail-open' : ''
                   }`}
                   key={day.date}
+                  role={log ? 'button' : undefined}
+                  tabIndex={log ? 0 : undefined}
+                  aria-expanded={log ? isLogDetailOpen : undefined}
+                  aria-label={
+                    log ? `${day.day}일 근무 상세 보기` : undefined
+                  }
+                  onClick={
+                    log
+                      ? () =>
+                          setSelectedCalendarLogId((currentId) =>
+                            currentId === log.id ? null : log.id,
+                          )
+                      : undefined
+                  }
+                  onKeyDown={
+                    log
+                      ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            setSelectedCalendarLogId((currentId) =>
+                              currentId === log.id ? null : log.id,
+                            )
+                          }
+                        }
+                      : undefined
+                  }
                 >
                   <div className="calendar-date-row">
                     <strong>{day.day}</strong>
@@ -6485,14 +6534,7 @@ function App() {
                     <p>산정 제외</p>
                   ) : log ? (
                     <div className="calendar-work-card">
-                      <span>
-                        {log.leave_type === 'full' && !hasLeaveWork
-                          ? getLeaveLabel(log.leave_type)
-                          : `${formatCalendarTime(
-                              log,
-                              log.office_clock_in,
-                            )} ~ ${formatCalendarTime(log, log.office_clock_out)}`}
-                      </span>
+                      <span>{calendarWorkTime}</span>
                       <small className={getCalendarPayClass(log.total_pay)}>
                         {formatCurrency(log.total_pay)}
                       </small>
@@ -6509,6 +6551,52 @@ function App() {
                   ) : (
                     <p>기록 없음</p>
                   )}
+                  {log && isLogDetailOpen && (
+                    <aside
+                      className="calendar-log-popover"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="calendar-log-popover-header">
+                        <strong>{formatWorkDateWithWeekday(log.work_date)}</strong>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setSelectedCalendarLogId(null)
+                          }}
+                          aria-label="근무 상세 닫기"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>근무시간</dt>
+                          <dd>{calendarWorkTime}</dd>
+                        </div>
+                        <div>
+                          <dt>실근로</dt>
+                          <dd>{formatMinutes(getLoggedWorkMinutes(log))}</dd>
+                        </div>
+                        <div>
+                          <dt>이동시간 차감</dt>
+                          <dd>
+                            {log.commute_minutes > 0
+                              ? `−${formatMinutes(log.commute_minutes)}`
+                              : '없음'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>연장근로</dt>
+                          <dd>{formatMinutes(log.overtime_minutes)}</dd>
+                        </div>
+                      </dl>
+                      <div className="calendar-log-reason">
+                        <span>연장근무 사유</span>
+                        <p>{log.overtime_reason?.trim() || '입력된 사유 없음'}</p>
+                      </div>
+                    </aside>
+                  )}
                 </div>
               )
             })}
@@ -6516,7 +6604,16 @@ function App() {
         </section>
       ) : (
         <>
-        <section className="workbench">
+        <div
+          className={`work-view-stage ${
+            workView === 'history' ? 'is-history-view' : 'is-input-view'
+          }`}
+        >
+        <section
+          className={`workbench ${
+            workView === 'input' ? '' : 'work-view-panel-hidden'
+          }`}
+        >
         <form className="input-panel" onSubmit={handleSave}>
           <div className="section-title work-title">
             <div className="work-title-heading">
@@ -6844,7 +6941,34 @@ function App() {
         </aside>
       </section>
 
-      <section className="history-section">
+      <button
+        type="button"
+        className="work-view-switch"
+        onClick={() => {
+          setWorkView((currentView) =>
+            currentView === 'input' ? 'history' : 'input',
+          )
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }}
+        aria-label={
+          workView === 'input' ? '월별 근무기록 보기' : '근무 입력으로 돌아가기'
+        }
+        title={
+          workView === 'input' ? '월별 근무기록 보기' : '근무 입력으로 돌아가기'
+        }
+      >
+        {workView === 'input' ? (
+          <ChevronRight size={24} />
+        ) : (
+          <ChevronLeft size={24} />
+        )}
+      </button>
+
+      <section
+        className={`history-section ${
+          workView === 'history' ? '' : 'work-view-panel-hidden'
+        }`}
+      >
         <div className="history-top">
           <div className="history-heading">
             <div className="section-title">
@@ -6852,6 +6976,10 @@ function App() {
               <h2>월별 근무기록</h2>
             </div>
             <p>급여 구성과 날짜별 근무 내역을 한눈에 확인하세요.</p>
+            <div className="history-work-legend" aria-label="근무 강조 표시">
+              <span className="overtime">연장근무</span>
+              <span className="weekend">주말·휴일 근무</span>
+            </div>
           </div>
           <div className="month-picker" aria-label="근무기록 조회 월">
             <select
@@ -7137,11 +7265,22 @@ function App() {
                   return null
                 }
 
+                const hasOvertimeWork = log.overtime_minutes > 0
+                const hasWeekendOrHolidayWork =
+                  getKoreanWeekday(log.work_date) === 0 ||
+                  getKoreanWeekday(log.work_date) === 6 ||
+                  isMonthlyHolidayDate(log.work_date, log)
+                const extraWorkClass = hasWeekendOrHolidayWork
+                  ? 'has-extra-work weekend-work'
+                  : hasOvertimeWork
+                    ? 'has-extra-work overtime-work'
+                    : ''
+
                 return (
                   <article
                     className={`log-row ${
                       editingWorkLogId === log.id ? 'is-editing' : ''
-                    }`}
+                    } ${extraWorkClass}`}
                     key={log.id}
                     role="button"
                     tabIndex={0}
@@ -7273,6 +7412,7 @@ function App() {
           )}
         </div>
       </section>
+      </div>
       </>
       )}
     </main>
