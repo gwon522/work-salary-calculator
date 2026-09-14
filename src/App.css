@@ -638,6 +638,16 @@ select:focus {
   margin: 0;
 }
 
+.work-view-stage.is-input-view .workbench {
+  animation: work-view-enter-from-left 0.38s cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+.work-view-stage.is-history-view .history-section {
+  animation: work-view-enter-from-right 0.38s cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
 .work-view-panel-hidden {
   display: none;
 }
@@ -675,9 +685,70 @@ select:focus {
 }
 
 .work-view-stage.is-history-view .work-view-switch {
-  top: 30px;
+  position: fixed;
+  top: 50%;
   right: auto;
-  left: -62px;
+  left: max(5px, calc((100vw - 1180px) / 2 - 23px));
+  transform: translateY(-50%);
+}
+
+.work-view-stage.is-input-view .work-view-switch svg {
+  animation: work-view-arrow-right 1.5s ease-in-out infinite;
+}
+
+.work-view-stage.is-history-view .work-view-switch svg {
+  animation: work-view-arrow-left 1.5s ease-in-out infinite;
+}
+
+.work-view-switch:hover svg,
+.work-view-switch:focus-visible svg {
+  animation-play-state: paused;
+}
+
+@keyframes work-view-enter-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes work-view-enter-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes work-view-arrow-right {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes work-view-arrow-left {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(-3px);
+  }
 }
 
 .input-panel,
@@ -2737,7 +2808,8 @@ select:focus {
 .log-row {
   display: grid;
   grid-template-columns:
-    1.1fr repeat(4, minmax(72px, 0.78fr)) 1fr minmax(130px, 1fr) 42px;
+    1.1fr repeat(4, minmax(72px, 0.78fr)) 1fr minmax(130px, 1fr)
+    minmax(132px, 0.9fr);
   align-items: center;
   gap: 12px;
 }
@@ -2890,6 +2962,65 @@ select:focus {
 .log-memo.muted {
   color: #8a9692;
   font-weight: 600;
+}
+
+.history-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.history-row-actions button {
+  height: 34px;
+  min-height: 34px;
+}
+
+.history-row-actions .icon-button {
+  width: 34px;
+  flex: 0 0 34px;
+}
+
+.overtime-submission-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid #cedbd6;
+  border-radius: 999px;
+  background: #f7faf9;
+  color: #57645f;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.overtime-submission-button:hover:not(:disabled),
+.overtime-submission-button:focus-visible {
+  border-color: #16806c;
+  background: #eaf6f2;
+  color: #0f6f5d;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.overtime-submission-button.is-complete {
+  border-color: #8cc7b8;
+  background: #dff3ec;
+  color: #0b6655;
+}
+
+.overtime-submission-button:disabled {
+  opacity: 0.62;
+  cursor: wait;
 }
 
 .working-calendar {
@@ -3204,10 +3335,11 @@ select:focus {
   }
 
   .work-view-stage.is-history-view .work-view-switch {
-    top: 18px;
+    position: fixed;
+    top: 50%;
     right: auto;
-    left: 18px;
-    transform: none;
+    left: max(5px, calc((100vw - 1180px) / 2 - 23px));
+    transform: translateY(-50%);
   }
 
   .work-view-stage.is-input-view .work-view-switch:hover,
@@ -3217,7 +3349,7 @@ select:focus {
 
   .work-view-stage.is-history-view .work-view-switch:hover,
   .work-view-stage.is-history-view .work-view-switch:focus-visible {
-    transform: scale(1.05);
+    transform: translateY(-50%) scale(1.05);
   }
 }
 
@@ -3314,13 +3446,15 @@ select:focus {
     display: none;
   }
 
+  .history-row-actions {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+    border-top: 1px solid #edf1ef;
+  }
+
   .log-memo {
     grid-column: 1 / -1;
     white-space: normal;
-  }
-
-  .log-row .icon-button {
-    justify-self: end;
   }
 
   .range-title {
@@ -3401,6 +3535,15 @@ select:focus {
 
   .calendar-log-popover::before {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-view-stage.is-input-view .workbench,
+  .work-view-stage.is-history-view .history-section,
+  .work-view-stage.is-input-view .work-view-switch svg,
+  .work-view-stage.is-history-view .work-view-switch svg {
+    animation: none;
   }
 }
 

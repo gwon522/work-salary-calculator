@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Calculator,
   CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -90,6 +91,7 @@ type WorkLog = {
   leave_type: string | null
   leave_minutes: number
   overtime_reason: string | null
+  overtime_submitted_at: string | null
   regular_pay: number
   overtime_pay: number
   night_pay: number
@@ -1472,6 +1474,8 @@ function App() {
   )
   const [saveMessage, setSaveMessage] = useState('')
   const [toastMessage, setToastMessage] = useState('')
+  const [updatingOvertimeSubmissionId, setUpdatingOvertimeSubmissionId] =
+    useState<string | null>(null)
   const [settingsMessage, setSettingsMessage] = useState('')
   const [profilePasswordMessage, setProfilePasswordMessage] = useState('')
   const [calendarMessage, setCalendarMessage] = useState('')
@@ -3982,6 +3986,40 @@ function App() {
     }
 
     await loadLogs()
+  }
+
+  async function handleToggleOvertimeSubmission(log: WorkLog) {
+    const nextSubmittedAt = log.overtime_submitted_at
+      ? null
+      : new Date().toISOString()
+
+    setUpdatingOvertimeSubmissionId(log.id)
+
+    const { error } = await supabase
+      .from('work_logs')
+      .update({ overtime_submitted_at: nextSubmittedAt })
+      .eq('id', log.id)
+      .eq('user_id', log.user_id)
+
+    setUpdatingOvertimeSubmissionId(null)
+
+    if (error) {
+      setToastMessage(`작성 상태를 변경하지 못했습니다: ${error.message}`)
+      return
+    }
+
+    setLogs((currentLogs) =>
+      currentLogs.map((currentLog) =>
+        currentLog.id === log.id
+          ? { ...currentLog, overtime_submitted_at: nextSubmittedAt }
+          : currentLog,
+      ),
+    )
+    setToastMessage(
+      nextSubmittedAt
+        ? '연장근로 작성완료로 표시했습니다.'
+        : '연장근로 작성완료 표시를 해제했습니다.',
+    )
   }
 
   async function handleLogout() {
@@ -7333,7 +7371,7 @@ function App() {
                 <span>휴일근로</span>
                 <span>예상 일급</span>
                 <span>메모</span>
-                <span></span>
+                <span>신청 상태</span>
               </div>
               {monthlyRows.map(({ date, log, holiday }) => {
                 if (holiday) {
@@ -7394,6 +7432,8 @@ function App() {
                   : hasOvertimeWork
                     ? 'has-extra-work overtime-work'
                     : ''
+                const requiresOvertimeSubmission =
+                  hasOvertimeWork || hasWeekendOrHolidayWork
 
                 return (
                   <article
@@ -7510,20 +7550,49 @@ function App() {
                     >
                       {log.overtime_reason ?? '메모 없음'}
                     </p>
-                    <button
-                      type="button"
-                      className="icon-button danger"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleDelete(log.id)
-                      }}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      aria-label={`${formatWorkDateWithWeekday(
-                        log.work_date,
-                      )} 근무기록 삭제`}
-                    >
-                      <Trash2 size={17} />
-                    </button>
+                    <div className="history-row-actions">
+                      {requiresOvertimeSubmission && (
+                        <button
+                          type="button"
+                          className={`overtime-submission-button ${
+                            log.overtime_submitted_at ? 'is-complete' : ''
+                          }`}
+                          disabled={updatingOvertimeSubmissionId === log.id}
+                          aria-pressed={Boolean(log.overtime_submitted_at)}
+                          title={
+                            log.overtime_submitted_at
+                              ? '작성완료 표시 해제'
+                              : '연장근로 작성완료 표시'
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleToggleOvertimeSubmission(log)
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          <Check size={14} />
+                          {updatingOvertimeSubmissionId === log.id
+                            ? '저장 중'
+                            : log.overtime_submitted_at
+                              ? '작성완료됨'
+                              : '작성완료'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="icon-button danger"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDelete(log.id)
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        aria-label={`${formatWorkDateWithWeekday(
+                          log.work_date,
+                        )} 근무기록 삭제`}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
                   </article>
                 )
               })}

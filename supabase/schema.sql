@@ -151,6 +151,7 @@ create table if not exists public.work_logs (
   leave_type text not null default 'none',
   leave_minutes integer not null default 0,
   overtime_reason text,
+  overtime_submitted_at timestamptz,
 
   regular_pay numeric not null default 0,
   overtime_pay numeric not null default 0,
@@ -173,6 +174,9 @@ add column if not exists leave_pay numeric not null default 0;
 
 alter table public.work_logs
 add column if not exists overtime_reason text;
+
+alter table public.work_logs
+add column if not exists overtime_submitted_at timestamptz;
 
 create or replace function public.handle_new_user()
 returns trigger
