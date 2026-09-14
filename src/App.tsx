@@ -1446,7 +1446,13 @@ function App() {
   const [editingWorkLogId, setEditingWorkLogId] = useState<string | null>(null)
   const [isLoadingWorkLogForDate, setIsLoadingWorkLogForDate] = useState(false)
   const workDateLookupRequestRef = useRef(0)
+  const adminOvertimeRequestRef = useRef(0)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [adminUserOvertimeMinutes, setAdminUserOvertimeMinutes] = useState<
+    Record<string, number>
+  >({})
+  const [isLoadingAdminUserOvertime, setIsLoadingAdminUserOvertime] =
+    useState(false)
   const [adminCreateUserForm, setAdminCreateUserForm] =
     useState<AdminCreateUserForm>(initialAdminCreateUserForm)
   const [adminUserFilters, setAdminUserFilters] = useState({
@@ -1622,6 +1628,14 @@ function App() {
     // loadAdminUsers depends on current profile role and is used only for admin pages.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePage, isAdmin])
+
+  useEffect(() => {
+    if (activePage === 'users' && isAdmin) {
+      loadAdminUserOvertimeSummary()
+    }
+    // The summary follows the work-log download month selected on the users page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage, isAdmin, workLogDownloadMonth, workLogDownloadYear])
 
   useEffect(() => {
     let isActive = true
@@ -2270,6 +2284,67 @@ function App() {
     }
 
     setAdminUsers((data ?? []) as AdminUser[])
+  }
+
+  async function loadAdminUserOvertimeSummary() {
+    if (!isAdmin) {
+      setAdminUserOvertimeMinutes({})
+      return
+    }
+
+    const requestId = adminOvertimeRequestRef.current + 1
+    adminOvertimeRequestRef.current = requestId
+    setIsLoadingAdminUserOvertime(true)
+
+    const { start, end } = getMonthRange(
+      workLogDownloadYear,
+      workLogDownloadMonth,
+    )
+    const totals: Record<string, number> = {}
+    const pageSize = 1000
+    let pageStart = 0
+
+    while (true) {
+      const { data, error } = await supabase
+        .from('work_logs')
+        .select('id, user_id, overtime_minutes')
+        .gte('work_date', start)
+        .lte('work_date', end)
+        .order('id', { ascending: true })
+        .range(pageStart, pageStart + pageSize - 1)
+
+      if (adminOvertimeRequestRef.current !== requestId) {
+        return
+      }
+
+      if (error) {
+        setAdminUserOvertimeMinutes({})
+        setIsLoadingAdminUserOvertime(false)
+        setSettingsMessage(`연장근로 시간을 불러오지 못했습니다: ${error.message}`)
+        return
+      }
+
+      const rows = (data ?? []) as Array<{
+        user_id: string
+        overtime_minutes: number | null
+      }>
+
+      rows.forEach((row) => {
+        totals[row.user_id] =
+          (totals[row.user_id] ?? 0) + (row.overtime_minutes ?? 0)
+      })
+
+      if (rows.length < pageSize) {
+        break
+      }
+
+      pageStart += pageSize
+    }
+
+    if (adminOvertimeRequestRef.current === requestId) {
+      setAdminUserOvertimeMinutes(totals)
+      setIsLoadingAdminUserOvertime(false)
+    }
   }
 
   async function handleCreateAdminUser(event: React.FormEvent<HTMLFormElement>) {
@@ -4799,6 +4874,10 @@ function App() {
                       <th>메일</th>
                       <th>직급/직책</th>
                       <th>현재 소속</th>
+                      <th className="admin-overtime-column">
+                        연장근로
+                        <small>{Number(workLogDownloadMonth)}월</small>
+                      </th>
                       <th>관리</th>
                     </tr>
                   </thead>
@@ -4832,6 +4911,23 @@ function App() {
                         <td>{user.position ?? '직급 없음'}</td>
                         <td>
                           <small>{getOrganizationPath(user)}</small>
+                        </td>
+                        <td className="admin-overtime-column">
+                          {isLoadingAdminUserOvertime ? (
+                            <span className="admin-overtime-loading">조회 중</span>
+                          ) : (
+                            <strong
+                              className={
+                                (adminUserOvertimeMinutes[user.id] ?? 0) > 0
+                                  ? 'admin-overtime-value has-overtime'
+                                  : 'admin-overtime-value'
+                              }
+                            >
+                              {formatMinutes(
+                                adminUserOvertimeMinutes[user.id] ?? 0,
+                              )}
+                            </strong>
+                          )}
                         </td>
                         <td>
                           <div className="admin-user-actions">
@@ -4889,175 +4985,198 @@ function App() {
                       ×
                     </button>
                   </div>
-                  <div className="selected-user-summary">
-                    <strong>
-                      {adminUserEditor.name} · {adminUserEditor.position ?? '직급 없음'}
-                    </strong>
-                    <span>{adminUserEditor.email}</span>
-                  </div>
-                  <div className="user-edit-grid">
-                    <div className="readonly-field user-edit-hourly">
-                      산정 통상시급
+                  <div className="user-edit-summary">
+                    <div className="selected-user-summary">
+                      <strong>
+                        {adminUserEditor.name} ·{' '}
+                        {adminUserEditor.position ?? '직급 없음'}
+                      </strong>
+                      <span>{adminUserEditor.email}</span>
+                    </div>
+                    <div className="user-edit-hourly">
+                      <span>산정 통상시급</span>
                       <strong>{formatCurrency(adminProfileEditorHourlyWage)}</strong>
                     </div>
-                    <label>
-                      직급/직책
-                      <select
-                        value={adminProfileEditorDraft.position}
-                        onChange={(event) =>
-                          setAdminUserProfileDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              ...adminProfileEditorDraft,
-                              position: event.target.value,
-                            },
-                          }))
-                        }
-                      >
-                        {positionOptions.map((position) => (
-                          <option key={position} value={position}>
-                            {position}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      입사일자
-                      <input
-                        type="date"
-                        value={adminProfileEditorDraft.hireDate}
-                        onChange={(event) =>
-                          setAdminUserProfileDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              ...adminProfileEditorDraft,
-                              hireDate: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      연봉
-                      <div className="money-input">
-                        <span>₩</span>
-                        <input
-                          inputMode="numeric"
-                          value={formatNumber(adminProfileEditorDraft.annualSalary)}
-                          onChange={(event) =>
-                            setAdminUserProfileDrafts((currentDrafts) => ({
-                              ...currentDrafts,
-                              [adminUserEditor.id]: {
-                                ...adminProfileEditorDraft,
-                                annualSalary: digitsOnly(event.target.value),
-                              },
-                            }))
-                          }
-                        />
+                  </div>
+                  <div className="user-edit-content">
+                    <section className="user-edit-section">
+                      <div className="user-edit-section-heading">
+                        <strong>근무·급여 정보</strong>
+                        <span>급여 계산에 사용되는 기본 정보입니다.</span>
                       </div>
-                    </label>
-                    <label>
-                      부양가족수
-                      <input
-                        inputMode="numeric"
-                        value={adminProfileEditorDraft.dependentCount}
-                        onChange={(event) =>
-                          setAdminUserProfileDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              ...adminProfileEditorDraft,
-                              dependentCount: digitsOnly(event.target.value),
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      8세 이상 20세 이하 자녀 수
-                      <input
-                        inputMode="numeric"
-                        value={adminProfileEditorDraft.childCount}
-                        onChange={(event) =>
-                          setAdminUserProfileDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              ...adminProfileEditorDraft,
-                              childCount: digitsOnly(event.target.value),
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      본부
-                      <select
-                        value={adminEditorDraft.divisionId}
-                        onChange={(event) =>
-                          setAdminUserOrgDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              divisionId: event.target.value,
-                              teamId: '',
-                              partId: '',
-                            },
-                          }))
-                        }
-                      >
-                        <option value="">본부 미지정</option>
-                        {organizationDivisions.map((division) => (
-                          <option key={division.id} value={division.id}>
-                            {division.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      팀
-                      <select
-                        value={adminEditorDraft.teamId}
-                        disabled={!adminEditorDraft.divisionId}
-                        onChange={(event) =>
-                          setAdminUserOrgDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              ...adminEditorDraft,
-                              teamId: event.target.value,
-                              partId: '',
-                            },
-                          }))
-                        }
-                      >
-                        <option value="">팀 미지정</option>
-                        {adminEditorTeams.map((team) => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      파트
-                      <select
-                        value={adminEditorDraft.partId}
-                        disabled={!adminEditorDraft.teamId}
-                        onChange={(event) =>
-                          setAdminUserOrgDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [adminUserEditor.id]: {
-                              ...adminEditorDraft,
-                              partId: event.target.value,
-                            },
-                          }))
-                        }
-                      >
-                        <option value="">파트 미지정</option>
-                        {adminEditorParts.map((part) => (
-                          <option key={part.id} value={part.id}>
-                            {part.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      <div className="user-edit-grid user-edit-profile-grid">
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">직급/직책</span>
+                          <select
+                            value={adminProfileEditorDraft.position}
+                            onChange={(event) =>
+                              setAdminUserProfileDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  ...adminProfileEditorDraft,
+                                  position: event.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            {positionOptions.map((position) => (
+                              <option key={position} value={position}>
+                                {position}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">입사일자</span>
+                          <input
+                            type="date"
+                            value={adminProfileEditorDraft.hireDate}
+                            onChange={(event) =>
+                              setAdminUserProfileDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  ...adminProfileEditorDraft,
+                                  hireDate: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">연봉</span>
+                          <div className="money-input">
+                            <span>₩</span>
+                            <input
+                              inputMode="numeric"
+                              value={formatNumber(
+                                adminProfileEditorDraft.annualSalary,
+                              )}
+                              onChange={(event) =>
+                                setAdminUserProfileDrafts((currentDrafts) => ({
+                                  ...currentDrafts,
+                                  [adminUserEditor.id]: {
+                                    ...adminProfileEditorDraft,
+                                    annualSalary: digitsOnly(event.target.value),
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                        </label>
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">부양가족 수</span>
+                          <input
+                            inputMode="numeric"
+                            value={adminProfileEditorDraft.dependentCount}
+                            onChange={(event) =>
+                              setAdminUserProfileDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  ...adminProfileEditorDraft,
+                                  dependentCount: digitsOnly(event.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">
+                            8세 이상 20세 이하 자녀 수
+                          </span>
+                          <input
+                            inputMode="numeric"
+                            value={adminProfileEditorDraft.childCount}
+                            onChange={(event) =>
+                              setAdminUserProfileDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  ...adminProfileEditorDraft,
+                                  childCount: digitsOnly(event.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </section>
+                    <section className="user-edit-section">
+                      <div className="user-edit-section-heading">
+                        <strong>소속 정보</strong>
+                        <span>본부를 선택하면 해당 팀과 파트를 지정할 수 있습니다.</span>
+                      </div>
+                      <div className="user-edit-grid user-edit-organization-grid">
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">본부</span>
+                          <select
+                            value={adminEditorDraft.divisionId}
+                            onChange={(event) =>
+                              setAdminUserOrgDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  divisionId: event.target.value,
+                                  teamId: '',
+                                  partId: '',
+                                },
+                              }))
+                            }
+                          >
+                            <option value="">본부 미지정</option>
+                            {organizationDivisions.map((division) => (
+                              <option key={division.id} value={division.id}>
+                                {division.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">팀</span>
+                          <select
+                            value={adminEditorDraft.teamId}
+                            disabled={!adminEditorDraft.divisionId}
+                            onChange={(event) =>
+                              setAdminUserOrgDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  ...adminEditorDraft,
+                                  teamId: event.target.value,
+                                  partId: '',
+                                },
+                              }))
+                            }
+                          >
+                            <option value="">팀 미지정</option>
+                            {adminEditorTeams.map((team) => (
+                              <option key={team.id} value={team.id}>
+                                {team.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="user-edit-field">
+                          <span className="user-edit-field-label">파트</span>
+                          <select
+                            value={adminEditorDraft.partId}
+                            disabled={!adminEditorDraft.teamId}
+                            onChange={(event) =>
+                              setAdminUserOrgDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [adminUserEditor.id]: {
+                                  ...adminEditorDraft,
+                                  partId: event.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <option value="">파트 미지정</option>
+                            {adminEditorParts.map((part) => (
+                              <option key={part.id} value={part.id}>
+                                {part.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </section>
                     <div className="user-edit-actions">
                       <button
                         type="button"
