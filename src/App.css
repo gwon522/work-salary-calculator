@@ -2553,7 +2553,7 @@ select:focus {
 
 .calendar-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
   margin-top: 18px;
   overflow: hidden;
@@ -2629,20 +2629,68 @@ select:focus {
   background: #16806c;
 }
 
-.calendar-summary-metric.is-commute::before {
-  background: #cf6f52;
+.calendar-worktime-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #d3ddda;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(23 63 57 / 5%);
 }
 
-.calendar-summary-metric.is-commute strong {
+.calendar-worktime-metric {
+  min-width: 0;
+  min-height: 76px;
+  display: grid;
+  grid-template-rows: 38px 38px;
+  border-top: 1px solid #d3ddda;
+  border-left: 1px solid #d3ddda;
+}
+
+.calendar-worktime-metric:nth-child(-n + 4) {
+  border-top: 0;
+}
+
+.calendar-worktime-metric:nth-child(4n + 1) {
+  border-left: 0;
+}
+
+.calendar-worktime-metric span,
+.calendar-worktime-metric strong {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 10px;
+  text-align: center;
+}
+
+.calendar-worktime-metric span {
+  border-bottom: 1px solid #d3ddda;
+  background: #eef2f0;
+  color: #4c5d58;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.calendar-worktime-metric strong {
+  color: #173f39;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.calendar-worktime-metric.is-commute span {
+  background: #fff0eb;
+  color: #99513d;
+}
+
+.calendar-worktime-metric.is-commute strong {
   color: #a64c35;
-}
-
-.calendar-summary-metric.is-overtime::before {
-  background: #d89614;
-}
-
-.calendar-summary-metric.is-overtime strong {
-  color: #9a6400;
 }
 
 .allowance-grid {
@@ -3534,21 +3582,21 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
-  .calendar-summary {
+  .calendar-worktime-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .calendar-summary-metric {
+  .calendar-worktime-metric:nth-child(n) {
+    border-top: 1px solid #d3ddda;
+    border-left: 1px solid #d3ddda;
+  }
+
+  .calendar-worktime-metric:nth-child(-n + 2) {
     border-top: 0;
+  }
+
+  .calendar-worktime-metric:nth-child(2n + 1) {
     border-left: 0;
-  }
-
-  .calendar-summary-metric:nth-child(even) {
-    border-left: 1px solid #e4ebe8;
-  }
-
-  .calendar-summary-metric:nth-child(n + 3) {
-    border-top: 1px solid #e4ebe8;
   }
 
   .month-picker {

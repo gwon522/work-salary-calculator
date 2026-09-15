@@ -6620,7 +6620,7 @@ function App() {
           {calendarMessage && <p className="message">{calendarMessage}</p>}
           <div
             className="calendar-summary"
-            aria-label={`${Number(selectedYear)}년 ${Number(selectedMonth)}월 근무 요약`}
+            aria-label={`${Number(selectedYear)}년 ${Number(selectedMonth)}월 급여 요약`}
           >
             <div className="calendar-summary-metric is-gross-pay">
               <span>총급여 · 세전</span>
@@ -6630,13 +6630,44 @@ function App() {
               <span>예상 실수령액 · 세후</span>
               <strong>{formatCurrency(monthlyNetPay)}</strong>
             </div>
-            <div className="calendar-summary-metric is-commute">
-              <span>이동시간 차감</span>
-              <strong>{formatMinutes(monthlyCommuteMinutes)}</strong>
+          </div>
+          <div
+            className="calendar-worktime-summary"
+            aria-label={`${Number(selectedYear)}년 ${Number(selectedMonth)}월 근로시간 요약`}
+          >
+            <div className="calendar-worktime-metric">
+              <span>고정 연장근로시간</span>
+              <strong>{formatAllowanceHours(fixedOvertimeMinutes)}</strong>
             </div>
-            <div className="calendar-summary-metric is-overtime">
-              <span>총 연장근로</span>
-              <strong>{formatMinutes(actualOvertimeMinutes)}</strong>
+            <div className="calendar-worktime-metric">
+              <span>고정 야간근로시간</span>
+              <strong>{formatAllowanceHours(0)}</strong>
+            </div>
+            <div className="calendar-worktime-metric">
+              <span>고정 휴일근로시간</span>
+              <strong>{formatAllowanceHours(fixedHolidayMinutes)}</strong>
+            </div>
+            <div className="calendar-worktime-metric is-commute">
+              <span>이동시간</span>
+              <strong>{formatAllowanceHours(monthlyCommuteMinutes)}</strong>
+            </div>
+            <div className="calendar-worktime-metric">
+              <span>추가 연장근로시간</span>
+              <strong>{formatAllowanceHours(additionalOvertimeMinutes)}</strong>
+            </div>
+            <div className="calendar-worktime-metric">
+              <span>추가 야간근로시간</span>
+              <strong>{formatAllowanceHours(additionalNightMinutes)}</strong>
+            </div>
+            <div className="calendar-worktime-metric">
+              <span>추가 휴일근로시간</span>
+              <strong>{formatAllowanceHours(additionalHolidayMinutes)}</strong>
+            </div>
+            <div className="calendar-worktime-metric">
+              <span>추가 휴일연장근로시간</span>
+              <strong>
+                {formatAllowanceHours(additionalHolidayOvertimeMinutes)}
+              </strong>
             </div>
           </div>
           <div className="working-calendar">
