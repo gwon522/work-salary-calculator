@@ -24,7 +24,9 @@ import {
 } from 'lucide-react'
 import JSZip from 'jszip'
 import './App.css'
-import { AppNavigation, WorkspaceHeader } from './AppNavigation'
+import { AppNavigation, PageHeading } from './AppNavigation'
+import { RetirementPage } from './RetirementPage'
+import type { WorkLog } from './workLogTypes'
 import { supabase } from './supabase'
 import {
   calculateInsurance,
@@ -75,34 +77,6 @@ type SystemSettings = {
   long_term_care_rate: number
   employment_insurance_rate: number
   local_income_tax_rate: number
-}
-
-type WorkLog = {
-  id: string
-  user_id: string
-  work_date: string
-  hourly_wage: number
-  office_clock_in: string
-  office_clock_out: string
-  remote_clock_in: string | null
-  remote_clock_out: string | null
-  commute_minutes: number
-  break_minutes: number
-  is_holiday: boolean
-  regular_minutes: number
-  overtime_minutes: number
-  night_minutes: number
-  holiday_minutes: number
-  leave_type: string | null
-  leave_minutes: number
-  overtime_reason: string | null
-  overtime_submitted_at: string | null
-  regular_pay: number
-  overtime_pay: number
-  night_pay: number
-  holiday_pay: number
-  leave_pay: number
-  total_pay: number
 }
 
 type LeaveType =
@@ -438,6 +412,18 @@ function getWorkLogCalculation(log: WorkLog, regularLimitMinutes: number) {
     isHoliday: log.is_holiday,
     regularLimitMinutes: regularLimitMinutes || undefined,
   })
+}
+
+async function loadRetirementLogs(userId: string, start: string, end: string): Promise<WorkLog[]> {
+  const { data, error } = await supabase
+    .from('work_logs')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('work_date', start)
+    .lte('work_date', end)
+    .order('work_date')
+  if (error) throw error
+  return data ?? []
 }
 
 function normalizeWorkLogCalculation(log: WorkLog, regularLimitMinutes: number) {
@@ -1455,7 +1441,7 @@ function App() {
   const [isProfilePasswordModalOpen, setIsProfilePasswordModalOpen] =
     useState(false)
   const [activePage, setActivePage] = useState<
-    'work' | 'calendar' | 'organization' | 'profile' | 'users' | 'system'
+    'work' | 'calendar' | 'organization' | 'profile' | 'users' | 'system' | 'retirement'
   >('work')
   const [workView, setWorkView] = useState<'input' | 'history'>('input')
   const [selectedCalendarLogId, setSelectedCalendarLogId] = useState<
@@ -4172,7 +4158,7 @@ function App() {
         onLogout={handleLogout}
       />
       <main className="app-content">
-        <WorkspaceHeader
+        <PageHeading
           page={activePage === 'work' && workView === 'history' ? 'history' : activePage}
         />
 
@@ -6406,6 +6392,18 @@ function App() {
             </div>
           )}
         </section>
+      ) : activePage === 'retirement' ? (
+        <RetirementPage
+          key={session.user.id}
+          userId={session.user.id}
+          hireDate={profile?.hire_date ?? ''}
+          monthlySalary={Math.max(0, Number(settingsForm.annualSalary) || 0) / 12}
+          hourlyWage={profileHourlyWage}
+          regularMinutes={defaultRegularMinutes}
+          paidDailyMinutes={paidWorkdayMinutes}
+          loadLogs={loadRetirementLogs}
+          normalizeLog={normalizeWorkLogCalculation}
+        />
       ) : activePage === 'calendar' ? (
         <section className="calendar-section">
           <div className="history-top">
@@ -6414,45 +6412,50 @@ function App() {
               <h2>워킹캘린더</h2>
             </div>
             <div className="month-picker" aria-label="워킹캘린더 조회 월">
-              <select
-                value={selectedYear}
-                onChange={(event) => {
-                  clearWorkLogEditState()
-                  setSelectedCalendarLogId(null)
-                  setSelectedYear(event.target.value)
-                }}
-              >
-                {yearOptions.map((year) => (
-                  <option
-                    key={year}
-                    value={year}
-                    disabled={year > Number(currentYear)}
-                  >
-                    {year}년
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedMonth}
-                onChange={(event) => {
-                  clearWorkLogEditState()
-                  setSelectedCalendarLogId(null)
-                  setSelectedMonth(event.target.value)
-                }}
-              >
-                {Array.from({ length: 12 }, (_, index) => {
-                  const month = String(index + 1).padStart(2, '0')
-                  const isFutureMonth =
-                    Number(selectedYear) === Number(currentYear) &&
-                    Number(month) > Number(currentMonth)
-
-                  return (
-                    <option key={month} value={month} disabled={isFutureMonth}>
-                      {Number(month)}월
+              <div className="month-picker-fields" role="group" aria-label="조회 연월">
+                <CalendarDays size={16} aria-hidden="true" />
+                <select
+                  aria-label="조회 연도"
+                  value={selectedYear}
+                  onChange={(event) => {
+                    clearWorkLogEditState()
+                    setSelectedCalendarLogId(null)
+                    setSelectedYear(event.target.value)
+                  }}
+                >
+                  {yearOptions.map((year) => (
+                    <option
+                      key={year}
+                      value={year}
+                      disabled={year > Number(currentYear)}
+                    >
+                      {year}년
                     </option>
-                  )
-                })}
-              </select>
+                  ))}
+                </select>
+                <select
+                  aria-label="조회 월"
+                  value={selectedMonth}
+                  onChange={(event) => {
+                    clearWorkLogEditState()
+                    setSelectedCalendarLogId(null)
+                    setSelectedMonth(event.target.value)
+                  }}
+                >
+                  {Array.from({ length: 12 }, (_, index) => {
+                    const month = String(index + 1).padStart(2, '0')
+                    const isFutureMonth =
+                      Number(selectedYear) === Number(currentYear) &&
+                      Number(month) > Number(currentMonth)
+
+                    return (
+                      <option key={month} value={month} disabled={isFutureMonth}>
+                        {Number(month)}월
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
               <button
                 type="button"
                 className="secondary-button compact-download-button"
@@ -7178,43 +7181,48 @@ function App() {
             </div>
           </div>
           <div className="month-picker" aria-label="근무기록 조회 월">
-            <select
-              value={selectedYear}
-              onChange={(event) => {
-                clearWorkLogEditState()
-                setSelectedYear(event.target.value)
-              }}
-            >
-              {yearOptions.map((year) => (
-                <option
-                  key={year}
-                  value={year}
-                  disabled={year > Number(currentYear)}
-                >
-                  {year}년
-                </option>
-              ))}
-            </select>
-            <select
-              value={selectedMonth}
-              onChange={(event) => {
-                clearWorkLogEditState()
-                setSelectedMonth(event.target.value)
-              }}
-            >
-              {Array.from({ length: 12 }, (_, index) => {
-                const month = String(index + 1).padStart(2, '0')
-                const isFutureMonth =
-                  Number(selectedYear) === Number(currentYear) &&
-                  Number(month) > Number(currentMonth)
-
-                return (
-                  <option key={month} value={month} disabled={isFutureMonth}>
-                    {Number(month)}월
+            <div className="month-picker-fields" role="group" aria-label="조회 연월">
+              <CalendarDays size={16} aria-hidden="true" />
+              <select
+                aria-label="조회 연도"
+                value={selectedYear}
+                onChange={(event) => {
+                  clearWorkLogEditState()
+                  setSelectedYear(event.target.value)
+                }}
+              >
+                {yearOptions.map((year) => (
+                  <option
+                    key={year}
+                    value={year}
+                    disabled={year > Number(currentYear)}
+                  >
+                    {year}년
                   </option>
-                )
-              })}
-            </select>
+                ))}
+              </select>
+              <select
+                aria-label="조회 월"
+                value={selectedMonth}
+                onChange={(event) => {
+                  clearWorkLogEditState()
+                  setSelectedMonth(event.target.value)
+                }}
+              >
+                {Array.from({ length: 12 }, (_, index) => {
+                  const month = String(index + 1).padStart(2, '0')
+                  const isFutureMonth =
+                    Number(selectedYear) === Number(currentYear) &&
+                    Number(month) > Number(currentMonth)
+
+                  return (
+                    <option key={month} value={month} disabled={isFutureMonth}>
+                      {Number(month)}월
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
           </div>
         </div>
         <div className="allowance-grid">

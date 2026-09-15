@@ -12,6 +12,7 @@ import {
   Users,
   UserRound,
   Workflow,
+  Wallet,
   X,
 } from 'lucide-react'
 import './AppNavigation.css'
@@ -24,6 +25,7 @@ export type NavigationPage =
   | 'organization'
   | 'system'
   | 'profile'
+  | 'retirement'
 
 type Props = {
   page: NavigationPage
@@ -37,6 +39,7 @@ const workItems = [
   { page: 'work', label: '근무입력', icon: Clock },
   { page: 'history', label: '월별 근무기록', icon: FileText },
   { page: 'calendar', label: '워킹캘린더', icon: CalendarDays },
+  { page: 'retirement', label: '퇴직금 정산', icon: Wallet },
 ] as const
 
 const adminItems = [
@@ -53,19 +56,12 @@ const navigationTitles: Record<NavigationPage, string> = {
   organization: '조직관리',
   system: '시스템관리',
   profile: '마이페이지',
+  retirement: '퇴직금 정산',
 }
 
-export function WorkspaceHeader({ page }: { page: NavigationPage }) {
+export function PageHeading({ page }: { page: NavigationPage }) {
   return (
-    <header className="workspace-header">
-      <div className="workspace-breadcrumb">
-        WORKSPACE <span>/</span> <h1>{navigationTitles[page]}</h1>
-      </div>
-      <span className="workspace-status">
-        <span />
-        나의 근무와 급여
-      </span>
-    </header>
+    <h1 className="desktop-page-title">{navigationTitles[page]}</h1>
   )
 }
 
