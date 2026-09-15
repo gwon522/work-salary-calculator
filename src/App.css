@@ -2551,28 +2551,98 @@ select:focus {
   white-space: nowrap;
 }
 
-.calendar-total {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+.calendar-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   margin-top: 18px;
+  overflow: hidden;
+  border: 1px solid #d9e5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(23 63 57 / 7%);
+}
+
+.calendar-summary-metric {
+  position: relative;
+  min-width: 0;
+  min-height: 82px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
   padding: 14px 16px;
-  border-radius: 8px;
-  background: #173f39;
-  color: #d9f2eb;
+  border-left: 1px solid #e4ebe8;
 }
 
-.calendar-total span {
-  font-size: 14px;
-  font-weight: 800;
+.calendar-summary-metric:first-child {
+  border-left: 0;
 }
 
-.calendar-total strong {
-  color: #ffffff;
-  font-size: 22px;
+.calendar-summary-metric::before {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  left: 16px;
+  height: 3px;
+  border-radius: 0 0 999px 999px;
+  background: #7bb5a6;
+  content: '';
+}
+
+.calendar-summary-metric span {
+  overflow: hidden;
+  color: #75817d;
+  font-size: 11px;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-summary-metric strong {
+  overflow: hidden;
+  color: #173f39;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-summary-metric.is-gross-pay {
+  background: #173f39;
+}
+
+.calendar-summary-metric.is-gross-pay::before {
+  background: #8bd0bd;
+}
+
+.calendar-summary-metric.is-gross-pay span {
+  color: #b9d9d1;
+}
+
+.calendar-summary-metric.is-gross-pay strong {
+  color: #ffffff;
+}
+
+.calendar-summary-metric.is-net-pay::before {
+  background: #16806c;
+}
+
+.calendar-summary-metric.is-commute::before {
+  background: #cf6f52;
+}
+
+.calendar-summary-metric.is-commute strong {
+  color: #a64c35;
+}
+
+.calendar-summary-metric.is-overtime::before {
+  background: #d89614;
+}
+
+.calendar-summary-metric.is-overtime strong {
+  color: #9a6400;
 }
 
 .allowance-grid {
@@ -3462,6 +3532,23 @@ select:focus {
   .month-picker,
   .allowance-grid {
     grid-template-columns: 1fr;
+  }
+
+  .calendar-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .calendar-summary-metric {
+    border-top: 0;
+    border-left: 0;
+  }
+
+  .calendar-summary-metric:nth-child(even) {
+    border-left: 1px solid #e4ebe8;
+  }
+
+  .calendar-summary-metric:nth-child(n + 3) {
+    border-top: 1px solid #e4ebe8;
   }
 
   .month-picker {

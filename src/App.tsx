@@ -2117,6 +2117,10 @@ function App() {
     (total, log) => total + log.overtime_minutes,
     0,
   )
+  const monthlyCommuteMinutes = payrollLogs.reduce(
+    (total, log) => total + log.commute_minutes,
+    0,
+  )
   const actualNightMinutes = payrollLogs.reduce(
     (total, log) => total + log.night_minutes,
     0,
@@ -6614,11 +6618,26 @@ function App() {
             </div>
           </div>
           {calendarMessage && <p className="message">{calendarMessage}</p>}
-          <div className="calendar-total">
-            <span>
-              {Number(selectedYear)}년 {Number(selectedMonth)}월 총급여(세전)
-            </span>
-            <strong>{formatCurrency(monthlyTotal)}</strong>
+          <div
+            className="calendar-summary"
+            aria-label={`${Number(selectedYear)}년 ${Number(selectedMonth)}월 근무 요약`}
+          >
+            <div className="calendar-summary-metric is-gross-pay">
+              <span>총급여 · 세전</span>
+              <strong>{formatCurrency(monthlyTotal)}</strong>
+            </div>
+            <div className="calendar-summary-metric is-net-pay">
+              <span>예상 실수령액 · 세후</span>
+              <strong>{formatCurrency(monthlyNetPay)}</strong>
+            </div>
+            <div className="calendar-summary-metric is-commute">
+              <span>이동시간 차감</span>
+              <strong>{formatMinutes(monthlyCommuteMinutes)}</strong>
+            </div>
+            <div className="calendar-summary-metric is-overtime">
+              <span>총 연장근로</span>
+              <strong>{formatMinutes(actualOvertimeMinutes)}</strong>
+            </div>
           </div>
           <div className="working-calendar">
             {['일', '월', '화', '수', '목', '금', '토'].map((weekday) => (
