@@ -71,8 +71,11 @@ pnpm run dev
 
 ```bash
 pnpm run lint
+pnpm test
 pnpm run build
 ```
+
+세금·보험료의 출처와 계산 범위는 [급여 공제 계산 기준](docs/payroll-calculation.md)을 참고합니다.
 
 ## 배포
 

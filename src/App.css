@@ -804,6 +804,14 @@ select:focus {
   grid-column: span 2;
 }
 
+.family-tax-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #66746f;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .readonly-field {
   min-height: 42px;
   display: flex;
@@ -3275,6 +3283,36 @@ select:focus {
   color: #0f473f;
   font-size: 14px;
   font-weight: 900;
+}
+
+.calendar-work-card .calendar-work-hour-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: #25312e;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.calendar-work-hour-row em {
+  overflow: hidden;
+  color: #697671;
+  font-style: normal;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-work-hour-row strong {
+  color: #173f39;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.calendar-work-hour-row.is-commute strong {
+  color: #a64c35;
 }
 
 .calendar-day.has-leave .calendar-work-card span {

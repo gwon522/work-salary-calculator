@@ -27,6 +27,11 @@ import JSZip from 'jszip'
 import './App.css'
 import { supabase } from './supabase'
 import {
+  calculateInsurance,
+  calculatePayrollTax,
+  normalizeEmploymentInsuranceRate,
+} from './payrollDeductions'
+import {
   calculatePay,
   combineDateAndTime,
   formatCurrency,
@@ -402,6 +407,56 @@ function formatAllowanceHours(minutes: number) {
   return `${hours.toFixed(2)}시간`
 }
 
+function getWorkLogCalculation(log: WorkLog, regularLimitMinutes: number) {
+  const workEnd = new Date(log.office_clock_out)
+  const excludedSegments: Array<{ start: Date; end: Date }> = []
+
+  if (log.commute_minutes > 0) {
+    excludedSegments.push(
+      log.remote_clock_in && log.remote_clock_out
+        ? {
+            start: new Date(log.remote_clock_in),
+            end: new Date(log.remote_clock_out),
+          }
+        : {
+            start: new Date(workEnd.getTime() - log.commute_minutes * 60_000),
+            end: workEnd,
+          },
+    )
+  }
+
+  return calculatePay({
+    hourlyWage: log.hourly_wage,
+    segments: [
+      {
+        start: new Date(log.office_clock_in),
+        end: new Date(log.office_clock_out),
+      },
+    ],
+    excludedSegments,
+    breakMinutes: log.break_minutes,
+    isHoliday: log.is_holiday,
+    regularLimitMinutes: regularLimitMinutes || undefined,
+  })
+}
+
+function normalizeWorkLogCalculation(log: WorkLog, regularLimitMinutes: number) {
+  const calculation = getWorkLogCalculation(log, regularLimitMinutes)
+
+  return {
+    ...log,
+    regular_minutes: calculation.regularMinutes,
+    overtime_minutes: calculation.overtimeMinutes,
+    night_minutes: calculation.nightMinutes,
+    holiday_minutes: calculation.holidayMinutes,
+    regular_pay: calculation.regularPay,
+    overtime_pay: calculation.overtimePay,
+    night_pay: calculation.nightPay,
+    holiday_pay: calculation.holidayPay,
+    total_pay: calculation.totalPay + log.leave_pay,
+  }
+}
+
 function getInclusiveLimitStatus(
   logs: WorkLog[],
   limitMinutes: number,
@@ -655,6 +710,22 @@ function formatExtendedTime(minutes: number) {
 
 function formatCopyTimeRange(start: string, end: string, copyStart = start) {
   return `${copyStart} ~ ${formatExtendedTime(getExtendedEndMinutes(start, end))}`
+}
+
+function getCommuteDateRange(form: WorkForm) {
+  const workStart = combineDateAndTime(form.workDate, form.workStart)
+  const commuteStartOffsetMinutes =
+    getExtendedEndMinutes(form.workStart, form.commuteStart) -
+    timeToMinutes(form.workStart)
+  const start = new Date(
+    workStart.getTime() + commuteStartOffsetMinutes * 60_000,
+  )
+  const end = new Date(
+    start.getTime() +
+      minutesFromTimeRange(form.commuteStart, form.commuteEnd) * 60_000,
+  )
+
+  return { start, end }
 }
 
 function getLeaveLabel(leaveType: string | null | undefined) {
@@ -1324,138 +1395,6 @@ function getCalendarPayClass(totalPay: number) {
   return 'pay-tier-low'
 }
 
-function percentToRate(value: string | number) {
-  return (Number(value) || 0) / 100
-}
-
-function calculateInsurance(
-  monthlyPay: number,
-  monthlyPensionBasePay: number,
-  rates: {
-    pensionRate: string
-    healthInsuranceRate: string
-    longTermCareRate: string
-    employmentInsuranceRate: string
-  },
-) {
-  const pension = Math.round(
-    monthlyPensionBasePay * percentToRate(rates.pensionRate),
-  )
-  const health = Math.round(
-    monthlyPay * percentToRate(rates.healthInsuranceRate),
-  )
-  const longTermCare = Math.round(
-    health * percentToRate(rates.longTermCareRate),
-  )
-  const employment = Math.round(
-    monthlyPay * percentToRate(rates.employmentInsuranceRate),
-  )
-  const total = pension + health + longTermCare + employment
-
-  return {
-    pension,
-    health,
-    longTermCare,
-    employment,
-    total,
-    netPay: Math.max(0, monthlyPay - total),
-  }
-}
-
-function calculateProgressiveIncomeTax(taxBase: number) {
-  const brackets = [
-    { limit: 14_000_000, rate: 0.06, deduction: 0 },
-    { limit: 50_000_000, rate: 0.15, deduction: 1_260_000 },
-    { limit: 88_000_000, rate: 0.24, deduction: 5_760_000 },
-    { limit: 150_000_000, rate: 0.35, deduction: 15_440_000 },
-    { limit: 300_000_000, rate: 0.38, deduction: 19_940_000 },
-    { limit: 500_000_000, rate: 0.4, deduction: 25_940_000 },
-    { limit: 1_000_000_000, rate: 0.42, deduction: 35_940_000 },
-    { limit: Number.POSITIVE_INFINITY, rate: 0.45, deduction: 65_940_000 },
-  ]
-  const bracket = brackets.find(({ limit }) => taxBase <= limit) ?? brackets[0]
-
-  return Math.max(0, Math.round(taxBase * bracket.rate - bracket.deduction))
-}
-
-function calculateEarnedIncomeDeduction(annualPay: number) {
-  if (annualPay <= 5_000_000) {
-    return annualPay * 0.7
-  }
-
-  if (annualPay <= 15_000_000) {
-    return 3_500_000 + (annualPay - 5_000_000) * 0.4
-  }
-
-  if (annualPay <= 45_000_000) {
-    return 7_500_000 + (annualPay - 15_000_000) * 0.15
-  }
-
-  if (annualPay <= 100_000_000) {
-    return 12_000_000 + (annualPay - 45_000_000) * 0.05
-  }
-
-  return Math.min(20_000_000, 14_750_000 + (annualPay - 100_000_000) * 0.02)
-}
-
-function calculateEarnedIncomeTaxCredit(calculatedTax: number) {
-  if (calculatedTax <= 0) {
-    return 0
-  }
-
-  const credit =
-    calculatedTax <= 1_300_000
-      ? calculatedTax * 0.55
-      : 715_000 + (calculatedTax - 1_300_000) * 0.3
-
-  return Math.min(740_000, Math.round(credit))
-}
-
-function calculateChildTaxCredit(childCount: number) {
-  if (childCount <= 0) {
-    return 0
-  }
-
-  if (childCount === 1) {
-    return 150_000
-  }
-
-  if (childCount === 2) {
-    return 300_000
-  }
-
-  return 300_000 + (childCount - 2) * 300_000
-}
-
-function calculatePayrollTax(
-  monthlyPay: number,
-  dependentCount: number,
-  childCount: number,
-  localIncomeTaxRate: string,
-) {
-  const annualPay = monthlyPay * 12
-  const earnedIncomeDeduction = calculateEarnedIncomeDeduction(annualPay)
-  const normalizedDependents = Math.max(1, dependentCount)
-  const taxableIncome = Math.max(
-    0,
-    annualPay - earnedIncomeDeduction - normalizedDependents * 1_500_000,
-  )
-  const calculatedTax = calculateProgressiveIncomeTax(taxableIncome)
-  const annualIncomeTax = Math.max(
-    0,
-    calculatedTax -
-      calculateEarnedIncomeTaxCredit(calculatedTax) -
-      calculateChildTaxCredit(childCount),
-  )
-  const incomeTax = Math.round(annualIncomeTax / 12)
-  const localIncomeTax = Math.floor(incomeTax * percentToRate(localIncomeTaxRate))
-
-  return {
-    incomeTax,
-    localIncomeTax,
-    total: incomeTax + localIncomeTax,
-  }
-}
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -2038,17 +1977,20 @@ function App() {
         ),
       },
     ]
+    const commuteRange = getCommuteDateRange(form)
 
     return calculatePay({
       hourlyWage: standardHourlyWage,
       segments,
-      breakMinutes: breakMinutes + commuteMinutes,
+      excludedSegments: form.noCommute
+        ? []
+        : [commuteRange],
+      breakMinutes,
       isHoliday: form.isHoliday,
       regularLimitMinutes: defaultRegularMinutes || undefined,
     })
   }, [
     breakMinutes,
-    commuteMinutes,
     defaultRegularMinutes,
     form,
     standardHourlyWage,
@@ -2063,9 +2005,9 @@ function App() {
 
   const calendarDays = getCalendarDays(selectedYear, selectedMonth)
   const calendarLeadingBlankCount = calendarDays[0]?.weekday ?? 0
-  const payrollLogs = logs.filter(
-    (log) => !isDateBeforeHireDate(log.work_date, workTargetHireDate),
-  )
+  const payrollLogs = logs
+    .filter((log) => !isDateBeforeHireDate(log.work_date, workTargetHireDate))
+    .map((log) => normalizeWorkLogCalculation(log, defaultRegularMinutes))
   const logsByDate = new Map(payrollLogs.map((log) => [log.work_date, log]))
   const paidHolidayMinutes = paidWorkdayMinutes
   const paidHolidays = calendarDays
@@ -2093,16 +2035,14 @@ function App() {
   const monthlySalary =
     Math.max(0, (Number(workTargetAnnualSalary) || 0) / 12) *
     monthlyEmploymentRatio
-  const fixedOvertimeMinutes = Math.round(
+  const fixedOvertimeMinutes =
     (Number(settingsForm.monthlyInclusiveOvertimeHours) || 0) *
-      60 *
-      monthlyEmploymentRatio,
-  )
-  const fixedHolidayMinutes = Math.round(
+    60 *
+    monthlyEmploymentRatio
+  const fixedHolidayMinutes =
     (Number(settingsForm.monthlyInclusiveHolidayHours) || 0) *
-      60 *
-      monthlyEmploymentRatio,
-  )
+    60 *
+    monthlyEmploymentRatio
   const fixedOvertimePay =
     (fixedOvertimeMinutes / 60) * standardHourlyWage * 1.5
   const fixedHolidayPay =
@@ -2186,7 +2126,6 @@ function App() {
     Number(workTargetChildCount) || 0,
     settingsForm.localIncomeTaxRate,
   )
-  const monthlyTaxTotal = monthlyTax.total
   const monthlyDeductions = monthlyInsurance.total + monthlyTax.total
   const monthlyNetPay = Math.max(0, monthlyTotal - monthlyDeductions)
   const userDisplayName = `${profile?.name ?? '사용자'}${
@@ -2623,8 +2562,10 @@ function App() {
           Number(initialSettingsForm.longTermCareRate),
       ),
       employmentInsuranceRate: String(
-        nextSettings?.employment_insurance_rate ??
-          Number(initialSettingsForm.employmentInsuranceRate),
+        normalizeEmploymentInsuranceRate(
+          nextSettings?.employment_insurance_rate ??
+            Number(initialSettingsForm.employmentInsuranceRate),
+        ),
       ),
       localIncomeTaxRate: String(
         nextSettings?.local_income_tax_rate ??
@@ -2994,6 +2935,10 @@ function App() {
     const annualSalary = Number(settingsForm.annualSalary) || 0
     const dependentCount = Math.max(1, Number(settingsForm.dependentCount) || 1)
     const childCount = Math.max(0, Number(settingsForm.childCount) || 0)
+    if (childCount >= dependentCount) {
+      setSettingsMessage('자녀 수는 본인을 제외한 공제대상 가족 수 이하여야 합니다.')
+      return
+    }
     if (annualSalary <= 0 || profileHourlyWage <= 0) {
       setSettingsMessage('연봉을 확인해주세요.')
       return
@@ -3509,6 +3454,10 @@ function App() {
     const annualSalary = Number(profileDraft.annualSalary) || 0
     const dependentCount = Math.max(1, Number(profileDraft.dependentCount) || 1)
     const childCount = Math.max(0, Number(profileDraft.childCount) || 0)
+    if (childCount >= dependentCount) {
+      setSettingsMessage('자녀 수는 본인을 제외한 공제대상 가족 수 이하여야 합니다.')
+      return
+    }
     const standardHourlyWage = calculateStandardHourlyWageFromAnnualSalary(
       annualSalary,
       settingsForm.monthlyInclusiveOvertimeHours,
@@ -4462,7 +4411,7 @@ function App() {
                 </div>
               </label>
               <label className="settings-half">
-                부양가족수
+                공제대상 가족 수 (본인 포함)
                 <input
                   inputMode="numeric"
                   value={settingsForm.dependentCount}
@@ -4475,7 +4424,7 @@ function App() {
                 />
               </label>
               <label className="settings-half">
-                8세 이상 20세 이하 자녀 수
+                만 8세 이상 20세 이하 자녀 수
                 <input
                   inputMode="numeric"
                   value={settingsForm.childCount}
@@ -4487,6 +4436,10 @@ function App() {
                   }
                 />
               </label>
+              <p className="family-tax-help">
+                가족 수는 본인과 소득요건을 충족한 가족을 포함합니다.
+                만 8세 미만 자녀도 가족 수에 포함하지만, 위 자녀 수에는 포함하지 않습니다.
+              </p>
               <button type="submit" className="primary-button">
                 <Save size={18} />
                 설정 저장
@@ -5138,7 +5091,7 @@ function App() {
                           </div>
                         </label>
                         <label className="user-edit-field">
-                          <span className="user-edit-field-label">부양가족 수</span>
+                          <span className="user-edit-field-label">공제대상 가족 수 (본인 포함)</span>
                           <input
                             inputMode="numeric"
                             value={adminProfileEditorDraft.dependentCount}
@@ -5155,7 +5108,7 @@ function App() {
                         </label>
                         <label className="user-edit-field">
                           <span className="user-edit-field-label">
-                            8세 이상 20세 이하 자녀 수
+                            만 8세 이상 20세 이하 자녀 수
                           </span>
                           <input
                             inputMode="numeric"
@@ -6714,6 +6667,16 @@ function App() {
                 : ''
               const isSaturdayOffday =
                 day.weekday === 6 && settingsForm.saturdayPolicy === 'offday'
+              const calendarOvertimeHours = log
+                ? formatAllowanceHours(
+                    isHolidayDate || isSaturdayOffday
+                      ? getLoggedWorkMinutes(log)
+                      : log.overtime_minutes,
+                  )
+                : ''
+              const calendarCommuteHours = log
+                ? formatAllowanceHours(log.commute_minutes)
+                : ''
               const shouldCopyFullCalendarWorkRange =
                 isHolidayDate || isSaturdayOffday
               const hasCalendarOvertimeToCopy = Boolean(
@@ -6794,7 +6757,14 @@ function App() {
                     <p>산정 제외</p>
                   ) : log ? (
                     <div className="calendar-work-card">
-                      <span>{calendarWorkTime}</span>
+                      <span className="calendar-work-hour-row">
+                        <em>연장근로시간</em>
+                        <strong>{calendarOvertimeHours}</strong>
+                      </span>
+                      <span className="calendar-work-hour-row is-commute">
+                        <em>이동시간</em>
+                        <strong>{calendarCommuteHours}</strong>
+                      </span>
                       <small className={getCalendarPayClass(log.total_pay)}>
                         {formatCurrency(log.total_pay)}
                       </small>
@@ -7516,8 +7486,12 @@ function App() {
               <dd>{formatCurrency(monthlyInsurance.total)}</dd>
             </div>
             <div>
-              <dt>소득세·지방소득세</dt>
-              <dd>{formatCurrency(monthlyTaxTotal)}</dd>
+              <dt>소득세</dt>
+              <dd>{formatCurrency(monthlyTax.incomeTax)}</dd>
+            </div>
+            <div>
+              <dt>지방소득세</dt>
+              <dd>{formatCurrency(monthlyTax.localIncomeTax)}</dd>
             </div>
             <div className="gross-line">
               <dt>예상 세전 급여</dt>
@@ -7529,9 +7503,10 @@ function App() {
             </div>
           </dl>
           <p className="summary-note">
-            4대보험은 근로자 부담분, 세금은 1인 기준 추정치입니다. 산재보험은
-            사업주 부담이며, 부양가족·자녀·비과세 급여에 따라 실제 공제액은
-            달라질 수 있습니다.
+            2026.2.27. 개정 근로소득 간이세액표 · 원천징수 100% 기준입니다.
+            공제대상 가족 {workTargetDependentCount}명(본인 포함), 만 8~20세 자녀{' '}
+            {workTargetChildCount}명을 적용했습니다. 4대보험은 근로자 부담분으로,
+            신고 보수월액·보험료 정산 등에 따라 실제 공제액은 달라질 수 있습니다.
           </p>
         </article>
         <div className="history-list">
@@ -7882,6 +7857,8 @@ function buildWorkLogPayload(
   leaveMinutes: number,
   leavePay: number,
 ) {
+  const commuteRange = getCommuteDateRange(form)
+
   return {
     user_id: userId,
     work_date: form.workDate,
@@ -7894,10 +7871,10 @@ function buildWorkLogPayload(
     ),
     remote_clock_in: form.noCommute
       ? null
-      : toDateTimeLocal(form.workDate, form.commuteStart),
+      : commuteRange.start.toISOString(),
     remote_clock_out: form.noCommute
       ? null
-      : toDateTimeLocal(form.workDate, form.commuteEnd, form.commuteStart),
+      : commuteRange.end.toISOString(),
     commute_minutes: commuteMinutes,
     break_minutes: breakMinutes,
     is_holiday: form.isHoliday,

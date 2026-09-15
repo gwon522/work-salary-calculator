@@ -6,6 +6,7 @@ export type WorkSegment = {
 export type PayCalculationInput = {
   hourlyWage: number
   segments: WorkSegment[]
+  excludedSegments?: WorkSegment[]
   breakMinutes: number
   isHoliday: boolean
   regularLimitMinutes?: number
@@ -81,10 +82,49 @@ export function calculateNightMinutes(segments: WorkSegment[]) {
   }, 0)
 }
 
+function excludeWorkSegments(
+  segments: WorkSegment[],
+  excludedSegments: WorkSegment[],
+) {
+  return excludedSegments.reduce<WorkSegment[]>((currentSegments, excluded) => {
+    if (excluded.end <= excluded.start) {
+      return currentSegments
+    }
+
+    return currentSegments.flatMap((segment) => {
+      if (excluded.end <= segment.start || excluded.start >= segment.end) {
+        return [segment]
+      }
+
+      const remainingSegments: WorkSegment[] = []
+
+      if (excluded.start > segment.start) {
+        remainingSegments.push({
+          start: segment.start,
+          end: excluded.start < segment.end ? excluded.start : segment.end,
+        })
+      }
+
+      if (excluded.end < segment.end) {
+        remainingSegments.push({
+          start: excluded.end > segment.start ? excluded.end : segment.start,
+          end: segment.end,
+        })
+      }
+
+      return remainingSegments
+    })
+  }, segments)
+}
+
 export function calculatePay(input: PayCalculationInput): PayCalculationResult {
   const regularLimitMinutes =
     input.regularLimitMinutes ?? DEFAULT_REGULAR_LIMIT_MINUTES
-  const grossWorkMinutes = input.segments.reduce(
+  const payableSegments = excludeWorkSegments(
+    input.segments,
+    input.excludedSegments ?? [],
+  )
+  const grossWorkMinutes = payableSegments.reduce(
     (total, segment) => total + minutesBetween(segment.start, segment.end),
     0,
   )
@@ -95,7 +135,7 @@ export function calculatePay(input: PayCalculationInput): PayCalculationResult {
   const overtimeMinutes = input.isHoliday
     ? 0
     : Math.max(0, totalMinutes - regularLimitMinutes)
-  const nightMinutes = Math.min(calculateNightMinutes(input.segments), totalMinutes)
+  const nightMinutes = Math.min(calculateNightMinutes(payableSegments), totalMinutes)
   const holidayMinutes = input.isHoliday ? totalMinutes : 0
 
   const regularPay =
