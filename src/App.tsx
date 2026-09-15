@@ -13,7 +13,6 @@ import {
   Home,
   Info,
   KeyRound,
-  LogOut,
   Mail,
   Pencil,
   Save,
@@ -25,6 +24,7 @@ import {
 } from 'lucide-react'
 import JSZip from 'jszip'
 import './App.css'
+import { AppNavigation, WorkspaceHeader } from './AppNavigation'
 import { supabase } from './supabase'
 import {
   calculateInsurance,
@@ -1450,8 +1450,6 @@ function App() {
   const [settingsMessage, setSettingsMessage] = useState('')
   const [profilePasswordMessage, setProfilePasswordMessage] = useState('')
   const [calendarMessage, setCalendarMessage] = useState('')
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
-  const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false)
   const [isAdminCreateUserModalOpen, setIsAdminCreateUserModalOpen] =
     useState(false)
   const [isProfilePasswordModalOpen, setIsProfilePasswordModalOpen] =
@@ -4156,132 +4154,27 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
-      <header className="top-bar">
-        <div>
-          <p className="eyebrow">Salary calculator</p>
-          <h1>WorkSalaryCalculator</h1>
-        </div>
-        <div className="user-actions">
-          <span className="user-display-name">{userDisplayName}님</span>
-          <button
-            type="button"
-            className={activePage === 'work' ? 'nav-button active' : 'nav-button'}
-            onClick={() => {
-              setActivePage('work')
-              setWorkView('input')
-              setIsUserMenuOpen(false)
-              setIsAdminMenuOpen(false)
-            }}
-          >
-            <Clock size={17} />
-            근무입력
-          </button>
-          <button
-            type="button"
-            className={
-              activePage === 'calendar' ? 'nav-button active' : 'nav-button'
-            }
-            onClick={() => {
-              setActivePage('calendar')
-              setSelectedCalendarLogId(null)
-              setIsUserMenuOpen(false)
-              setIsAdminMenuOpen(false)
-            }}
-          >
-            <Grid3X3 size={17} />
-            워킹캘린더
-          </button>
-          {isAdmin && (
-            <div className="user-menu admin-menu">
-              <button
-                type="button"
-                className={
-                  activePage === 'users' ||
-                  activePage === 'system' ||
-                  activePage === 'organization'
-                    ? 'nav-button active'
-                    : 'nav-button'
-                }
-                aria-expanded={isAdminMenuOpen}
-                onClick={() => {
-                  setIsAdminMenuOpen((isOpen) => !isOpen)
-                  setIsUserMenuOpen(false)
-                }}
-              >
-                <Users size={17} />
-                관리자메뉴
-              </button>
-              {isAdminMenuOpen && (
-                <div className="user-menu-panel admin-menu-panel">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActivePage('users')
-                      setIsAdminMenuOpen(false)
-                    }}
-                  >
-                    <Users size={16} />
-                    사용자관리
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActivePage('organization')
-                      setIsAdminMenuOpen(false)
-                    }}
-                  >
-                    <Users size={16} />
-                    조직관리
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActivePage('system')
-                      setIsAdminMenuOpen(false)
-                    }}
-                  >
-                    <Settings size={16} />
-                    시스템관리
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="user-menu">
-            <button
-              type="button"
-              className={activePage === 'profile' ? 'icon-button active' : 'icon-button'}
-              aria-label="사용자 메뉴"
-              aria-expanded={isUserMenuOpen}
-              onClick={() => {
-                setIsUserMenuOpen((isOpen) => !isOpen)
-                setIsAdminMenuOpen(false)
-              }}
-            >
-              <Settings size={18} />
-            </button>
-            {isUserMenuOpen && (
-              <div className="user-menu-panel">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActivePage('profile')
-                    setIsUserMenuOpen(false)
-                  }}
-                >
-                  <UserRound size={16} />
-                  마이페이지
-                </button>
-                <button type="button" onClick={handleLogout}>
-                  <LogOut size={16} />
-                  로그아웃
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+    <div className="app-shell sidebar-layout">
+      <AppNavigation
+        page={activePage === 'work' && workView === 'history' ? 'history' : activePage}
+        isAdmin={isAdmin}
+        userName={userDisplayName}
+        onNavigate={(page) => {
+          if (page === 'work' || page === 'history') {
+            setActivePage('work')
+            setWorkView(page === 'history' ? 'history' : 'input')
+          } else {
+            setActivePage(page)
+          }
+          setSelectedCalendarLogId(null)
+          window.scrollTo({ top: 0, behavior: 'auto' })
+        }}
+        onLogout={handleLogout}
+      />
+      <main className="app-content">
+        <WorkspaceHeader
+          page={activePage === 'work' && workView === 'history' ? 'history' : activePage}
+        />
 
       {toastMessage && (
         <div className="toast-message" role="status" aria-live="polite">
@@ -7024,6 +6917,9 @@ function App() {
                     <strong>근무시간</strong>
                     <small>출근부터 퇴근까지</small>
                   </div>
+                  {isNextDayWorkEnd && (
+                    <span className="next-day-chip">다음날 종료</span>
+                  )}
                 </div>
                 <div className="time-range-controls">
                   <TimeBox
@@ -7039,9 +6935,6 @@ function App() {
                     onChange={(value) => setForm({ ...form, workEnd: value })}
                     disabled={form.leaveType === 'full'}
                   />
-                  {isNextDayWorkEnd && (
-                    <span className="next-day-chip">다음날</span>
-                  )}
                 </div>
                 <div className="copy-time-row">
                   <span className="duration-pill">
@@ -7085,6 +6978,9 @@ function App() {
                       <span>{form.noCommute ? '차감 안 함' : '차감 적용'}</span>
                     </label>
                   </div>
+                  {isNextDayCommuteEnd && (
+                    <span className="next-day-chip">다음날 종료</span>
+                  )}
                 </div>
                 <div className="time-range-controls">
                   <TimeBox
@@ -7102,9 +6998,6 @@ function App() {
                     onChange={(value) => setForm({ ...form, commuteEnd: value })}
                     disabled={form.noCommute || form.leaveType === 'full'}
                   />
-                  {isNextDayCommuteEnd && (
-                    <span className="next-day-chip">다음날</span>
-                  )}
                 </div>
                 <div className="copy-time-row">
                   <span className="duration-pill commute-duration">
@@ -7754,7 +7647,8 @@ function App() {
       </div>
       </>
       )}
-    </main>
+      </main>
+    </div>
   )
 }
 

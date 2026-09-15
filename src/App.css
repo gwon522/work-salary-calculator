@@ -312,6 +312,23 @@ select:focus {
   padding: 28px;
 }
 
+.app-shell.sidebar-layout { padding: 0 0 0 236px; }
+.app-content { min-width: 0; padding: 0 38px 32px; }
+.workspace-header { max-width: 1180px; min-height: 88px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.workspace-breadcrumb { display: flex; align-items: center; gap: 12px; color: #8a9791; font-size: 10px; letter-spacing: .07em; }
+.workspace-breadcrumb > span { color: #c6d0ca; font-size: 14px; }
+.workspace-header h1 { margin: 0; color: #53675d; font-size: 12px; letter-spacing: 0; font-weight: 600; }
+.workspace-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: #819087; }
+.workspace-status > span { width: 5px; height: 5px; border-radius: 50%; background: #519579; }
+.sidebar-layout .work-view-stage.is-history-view .work-view-switch { left: max(251px, calc(236px + (100vw - 236px - 1180px) / 2 - 23px)); }
+
+@media (max-width: 1100px) {
+  .app-shell.sidebar-layout { padding: 0; }
+  .app-content { padding: 20px 26px 28px; }
+  .workspace-header { display: none; }
+  .sidebar-layout .work-view-stage.is-history-view .work-view-switch { left: max(3px, calc((100vw - 1180px) / 2 - 23px)); }
+}
+
 .top-bar {
   max-width: 1180px;
   margin: 0 auto 24px;
@@ -2096,12 +2113,13 @@ select:focus {
 
 .time-card-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
   gap: 12px;
   align-items: stretch;
 }
 
 .time-entry-card {
+  container-type: inline-size;
   min-width: 0;
   display: grid;
   align-content: start;
@@ -2126,6 +2144,7 @@ select:focus {
 }
 
 .time-card-header {
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2169,17 +2188,20 @@ select:focus {
 }
 
 .time-range-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 18px minmax(140px, 1fr);
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
 }
 
 .time-range-controls .time-box {
-  flex: 1 1 120px;
-  width: auto;
-  min-width: 112px;
+  width: 100%;
+  min-width: 140px;
+  height: 46px;
   min-height: 46px;
+  padding: 0 10px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
   border-color: #ccdad5;
   border-radius: 11px;
   background: #ffffff;
@@ -2191,6 +2213,39 @@ select:focus {
   color: #91a09b;
   font-size: 17px;
   font-weight: 900;
+  text-align: center;
+}
+
+.time-card-header .next-day-chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+@container (max-width: 313px) {
+  .time-range-controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .time-range-controls .time-box {
+    min-width: 0;
+  }
+
+  .time-range-controls .time-arrow {
+    justify-self: center;
+    transform: rotate(90deg);
+    line-height: 18px;
+  }
+
+  .time-entry-card .copy-time-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .copy-time-row .duration-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 }
 
 .copy-time-row {
@@ -3858,11 +3913,6 @@ select:focus {
 
   .time-card-header {
     align-items: flex-start;
-  }
-
-  .time-range-controls .time-box {
-    flex-basis: calc(50% - 20px);
-    min-width: 0;
   }
 
   .input-panel .form-actions,
